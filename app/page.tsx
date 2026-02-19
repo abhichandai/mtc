@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import TwitterSection from './components/TwitterSection';
 
 interface Trend {
   query: string;
@@ -93,6 +94,8 @@ export default function Home() {
                   ))}
                 </div>
               )}
+              
+              <TwitterSection query={trend.query} />
             </div>
           ))}
         </div>
