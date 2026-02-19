@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   try {
     // Fetch from your existing trends API
-    const response = await fetch('http://143.198.46.229:5000/trends/google');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
+    const response = await fetch(`${apiUrl}/trends/google`);
     
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
