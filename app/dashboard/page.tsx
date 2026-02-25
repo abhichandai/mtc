@@ -213,14 +213,63 @@ function DashboardContent() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/analyze-niche', {
+      const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
+
+      // Step 1: Ask Claude which subreddits match this niche
+      const nicheRes = await fetch('/api/analyze-niche', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keywords }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load trends');
-      setResult(data);
+      const nicheData = await nicheRes.json();
+      if (!nicheRes.ok || !nicheData.success) throw new Error(nicheData.error || 'Failed to analyze niche');
+
+      const subreddits: string[] = nicheData.subreddits || ['entrepreneur', 'productivity'];
+
+      // Step 2: Fetch hot posts from those subreddits via backend
+      const redditRes = await fetch(
+        `${BACKEND}/trends/reddit?subreddits=${subreddits.join(',')}&limit=25`,
+        { signal: AbortSignal.timeout(20000) }
+      );
+      const redditData = await redditRes.json();
+
+      if (!redditData.success || !redditData.posts?.length) {
+        throw new Error('No posts returned from Reddit');
+      }
+
+      // Step 3: Enrich top 10 posts with Twitter conversations
+      const top10 = redditData.posts.slice(0, 10);
+      const enriched = await Promise.allSettled(
+        top10.map(async (post: Trend) => {
+          try {
+            const twitterRes = await fetch(
+              `${BACKEND}/trends/twitter/search?query=${encodeURIComponent(post.title || '')}&limit=5`,
+              { signal: AbortSignal.timeout(6000) }
+            );
+            if (!twitterRes.ok) return { ...post, tweets: [], twitterError: true };
+            const td = await twitterRes.json();
+            return { ...post, tweets: td.tweets?.slice(0, 5) || [] };
+          } catch {
+            return { ...post, tweets: [], twitterError: true };
+          }
+        })
+      );
+
+      const trends = enriched
+        .filter(r => r.status === 'fulfilled')
+        .map(r => (r as PromiseFulfilledResult<Trend>).value);
+
+      setResult({
+        success: true,
+        niche: {
+          keywords,
+          description: nicheData.description || keywords.join(', '),
+          subreddits,
+        },
+        trends,
+        total_analyzed: redditData.count || 0,
+        source: 'reddit',
+      });
       setLastUpdated(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
