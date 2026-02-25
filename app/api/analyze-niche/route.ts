@@ -4,237 +4,169 @@ import Anthropic from '@anthropic-ai/sdk';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
 
+const REDDIT_HEADERS = {
+  'User-Agent': 'MakeThisContent/1.0 (makethiscontent.com; content trend intelligence)',
+  'Accept': 'application/json',
+};
+
+async function fetchSubreddit(subreddit: string, limit = 25): Promise<RedditPost[]> {
+  try {
+    const res = await fetch(
+      `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}&raw_json=1`,
+      { headers: REDDIT_HEADERS, signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const children = data?.data?.children || [];
+    return children
+      .filter((c: RedditChild) => !c.data.stickied && c.data.score > 5)
+      .map((c: RedditChild) => ({
+        id: c.data.id,
+        title: c.data.title,
+        preview: c.data.selftext?.slice(0, 280) || "",
+        score: c.data.score,
+        num_comments: c.data.num_comments,
+        engagement: c.data.score + c.data.num_comments * 3,
+        subreddit: c.data.subreddit,
+        url: `https://reddit.com${c.data.permalink}`,
+        external_url: c.data.is_self ? null : c.data.url,
+        is_text_post: c.data.is_self,
+        author: c.data.author,
+        created_utc: c.data.created_utc,
+        flair: c.data.link_flair_text || "",
+        source: "reddit",
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { keywords } = await req.json();
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
-      return NextResponse.json({ error: 'Keywords required' }, { status: 400 });
+      return NextResponse.json({ error: "Keywords required" }, { status: 400 });
     }
 
-    const nicheString = keywords.filter(Boolean).join(', ');
+    const nicheString = keywords.filter(Boolean).join(", ");
 
-    // Step 1: Use Claude to deeply understand the niche
-    let nicheAnalysis: { 
-      categories: string[]; 
-      matchTerms: string[]; 
-      description: string;
-      excludeTerms: string[];
-    } = {
-      categories: [],
-      matchTerms: keywords,
-      description: nicheString,
-      excludeTerms: [],
-    };
+    let subreddits: string[] = ["entrepreneur", "productivity", "SideProject"];
+    let description = nicheString;
 
     try {
       const claudeResponse = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 500,
         messages: [{
-          role: 'user',
-          content: `You are helping a content creator find trending topics relevant to their niche.
+          role: "user",
+          content: `You are helping a content creator find what their niche audience is talking about RIGHT NOW on Reddit.
 
-Niche keywords: "${nicheString}"
+Their niche: "${nicheString}"
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown):
 {
-  "googleCategories": ["2-4 Google Trends category names. Choose ONLY from this exact list: Technology, Science, Business and Finance, Jobs and Education, Health, Sports, Entertainment, Politics, Law and Government, Climate, Games, Travel and Transportation, Food and Drink, Shopping, Hobbies and Leisure, Beauty and Fashion, Autos and Vehicles, Other"],
-  "matchPhrases": ["10-15 MULTI-WORD phrases or specific proper nouns that would appear verbatim in trending topic titles. NEVER include single common words. Good examples: 'openai', 'chatgpt', 'artificial intelligence', 'machine learning', 'side hustle', 'solopreneur'. Bad examples: 'app', 'tech', 'short', 'tools', 'content' (too short/generic and cause false matches)"],
-  "description": "one crisp sentence describing this creator's niche"
+  "subreddits": ["6-8 real, active subreddit names (no r/ prefix) where this audience actually posts. Prefer specific niche communities. For AI tools productivity solopreneurs: ChatGPT, SideProject, entrepreneur, productivity, artificial, OpenAI, nocode, startups"],
+  "description": "one sharp sentence describing this niche audience"
 }`,
         }],
       });
 
-      const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
-      const cleaned = text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-      nicheAnalysis = {
-        categories: parsed.googleCategories || [],
-        matchTerms: parsed.matchPhrases || keywords,
-        description: parsed.description || nicheString,
-        excludeTerms: [],
-      };
+      const text = claudeResponse.content[0].type === "text" ? claudeResponse.content[0].text : "";
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      subreddits = parsed.subreddits || subreddits;
+      description = parsed.description || description;
     } catch (e) {
-      console.error('Claude analysis failed, using keywords directly:', e);
-      nicheAnalysis.matchTerms = keywords;
+      console.error("Claude analysis failed:", e);
     }
 
-    // Step 2: Fetch ALL 381 Google Trends from Flask backend
-    // First try with cache, fall back to fresh if we get too few results
-    let allTrends: RawTrend[] = [];
-    
-    const tryFetch = async (fresh: boolean) => {
-      const url = `${BACKEND_URL}/trends/google?limit=381${fresh ? '&fresh=true' : ''}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
-      if (!res.ok) throw new Error(`Backend returned ${res.status}`);
-      const data = await res.json();
-      return data.trends || data.data?.trends || [];
-    };
+    // Fetch from Vercel edge (not VPS) - Reddit doesn't block Vercel IPs
+    const results = await Promise.allSettled(
+      subreddits.map(sub => fetchSubreddit(sub, 20))
+    );
 
-    allTrends = await tryFetch(false);
-    
-    // If cache was stale and only returned a small set, force fresh
-    if (allTrends.length < 100) {
-      console.log(`Only got ${allTrends.length} trends from cache, forcing fresh fetch`);
-      allTrends = await tryFetch(true);
+    const allPosts: RedditPost[] = results
+      .filter(r => r.status === "fulfilled")
+      .flatMap(r => (r as PromiseFulfilledResult<RedditPost[]>).value);
+
+    const seen = new Set<string>();
+    const deduped = allPosts
+      .filter(p => {
+        const k = p.title.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => b.engagement - a.engagement);
+
+    if (deduped.length === 0) {
+      throw new Error("No posts returned from Reddit");
     }
 
-    if (allTrends.length === 0) {
-      throw new Error('No trends returned from backend');
-    }
+    const top15 = deduped.slice(0, 15);
 
-    // Step 3: Score trends — category gate first, then whole-word phrase matching
-    const matchPhrasesLower = nicheAnalysis.matchTerms.map(t => t.toLowerCase().trim());
-    const relevantCategories = nicheAnalysis.categories.map(c => c.toLowerCase());
-    const keywordsLower = keywords.map(k => k.toLowerCase());
-
-    // Helper: whole-word match (prevents "app" matching "approval")
-    const wholeWordMatch = (text: string, phrase: string): boolean => {
-      if (phrase.includes(' ')) {
-        // Multi-word phrase: just check if it appears as a substring (already specific enough)
-        return text.includes(phrase);
-      }
-      // Single word: require word boundaries
-      const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`\\b${escaped}\\b`).test(text);
-    };
-
-    const scoredTrends = allTrends.map((trend: RawTrend) => {
-      const topicLower = (trend.query || trend.topic || '').toLowerCase();
-      const trendCategories = (trend.categories || []).map((c: TrendCategory) =>
-        (typeof c === 'string' ? c : c.name || '').toLowerCase()
-      );
-      const relatedSearches = (trend.related_searches || trend.related_queries || [])
-        .map((r: RelatedSearch) => (typeof r === 'string' ? r : r.query || '').toLowerCase());
-
-      // GATE 1: Category must match — if no category overlap, skip entirely
-      // (Exception: if we have very few relevant categories, be more lenient)
-      const hasCategoryMatch = relevantCategories.length === 0 || 
-        trendCategories.some(tc => 
-          relevantCategories.some(rc => tc.includes(rc) || rc.includes(tc))
-        );
-
-      if (!hasCategoryMatch) return { ...trend, relevanceScore: 0 };
-
-      let relevanceScore = 0;
-
-      // Direct keyword match in topic title (whole word)
-      for (const kw of keywordsLower) {
-        if (wholeWordMatch(topicLower, kw)) relevanceScore += 60;
-      }
-
-      // Match phrase in topic title (whole word)
-      for (const phrase of matchPhrasesLower) {
-        if (phrase.length > 3 && wholeWordMatch(topicLower, phrase)) relevanceScore += 40;
-      }
-
-      // Match phrase in related searches (whole word)
-      for (const phrase of matchPhrasesLower) {
-        for (const rel of relatedSearches) {
-          if (phrase.length > 4 && wholeWordMatch(rel, phrase)) relevanceScore += 8;
-        }
-      }
-
-      // Category match adds bonus points (only when already relevant)
-      if (relevanceScore > 0) {
-        relevanceScore += 15; // base bonus for being in the right category
-      } else {
-        // In the right category but no keyword match — include with low score
-        // so we can still surface some results when keyword matches are scarce
-        relevanceScore = 5;
-      }
-
-      // Volume/growth only as minor tiebreakers
-      const volume = trend.search_volume || trend.traffic || 0;
-      const growth = trend.increase_percentage || trend.growth || 0;
-      if (volume > 0) relevanceScore += Math.log10(volume + 1) * 1.5; // max ~6 pts
-      if (growth > 0) relevanceScore += Math.min(growth / 200, 3);     // max ~3 pts
-
-      return { ...trend, relevanceScore };
-    });
-
-    // Filter to only trends with a category match (score > 0), sort by relevance
-    const relevantTrends = scoredTrends
-      .filter(t => t.relevanceScore > 0)
-      .sort((a, b) => b.relevanceScore - a.relevanceScore);
-
-    // Take top 15 for Twitter enrichment
-    const top15 = relevantTrends.slice(0, 15);
-
-    // Step 4: Enrich with Twitter conversations
-    const enrichedTrends = await Promise.allSettled(
-      top15.map(async (trend) => {
-        const query = trend.query || trend.topic || '';
+    // Enrich with Twitter via backend
+    const enriched = await Promise.allSettled(
+      top15.map(async (post) => {
+        const query = post.title.slice(0, 100);
         try {
           const twitterRes = await fetch(
-            `${BACKEND_URL}/trends/twitter/search?query=${encodeURIComponent(query)}&limit=10`,
-            { signal: AbortSignal.timeout(8000) }
+            `${BACKEND_URL}/trends/twitter/search?query=${encodeURIComponent(query)}&limit=5`,
+            { signal: AbortSignal.timeout(6000) }
           );
-          if (!twitterRes.ok) return { ...trend, tweets: [], twitterError: true };
+          if (!twitterRes.ok) return { ...post, tweets: [], twitterError: true };
           const twitterData = await twitterRes.json();
-          const tweets = twitterData.tweets || twitterData.data || [];
-          return { ...trend, tweets: tweets.slice(0, 5) };
+          return { ...post, tweets: (twitterData.tweets || []).slice(0, 5) };
         } catch {
-          return { ...trend, tweets: [], twitterError: true };
+          return { ...post, tweets: [], twitterError: true };
         }
       })
     );
 
-    const finalTrends = enrichedTrends
-      .filter(r => r.status === 'fulfilled')
-      .map(r => (r as PromiseFulfilledResult<EnrichedTrend>).value)
+    const finalTrends = enriched
+      .filter(r => r.status === "fulfilled")
+      .map(r => (r as PromiseFulfilledResult<EnrichedPost>).value)
       .slice(0, 10);
 
     return NextResponse.json({
       success: true,
-      niche: {
-        keywords,
-        description: nicheAnalysis.description,
-        categories: nicheAnalysis.categories,
-      },
+      niche: { keywords, description, subreddits },
       trends: finalTrends,
-      total_analyzed: allTrends.length,
-      total_matched: relevantTrends.length,
+      total_analyzed: deduped.length,
+      sources: subreddits,
     });
 
   } catch (error) {
-    console.error('analyze-niche error:', error);
+    console.error("analyze-niche error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }
 }
 
-// Types
-type TrendCategory = { id?: number; name: string } | string;
-type RelatedSearch = string | { query: string };
-
-interface RawTrend {
-  query?: string;
-  topic?: string;
-  search_volume?: number;
-  traffic?: number;
-  increase_percentage?: number;
-  growth?: number;
-  categories?: TrendCategory[];
-  related_searches?: RelatedSearch[];
-  related_queries?: RelatedSearch[];
-  relevanceScore?: number;
+interface RedditChild {
+  data: {
+    id: string; title: string; selftext: string; score: number;
+    num_comments: number; subreddit: string; permalink: string;
+    url: string; is_self: boolean; author: string; created_utc: number;
+    link_flair_text: string; stickied: boolean;
+  };
 }
 
-interface EnrichedTrend extends RawTrend {
-  tweets: Tweet[];
-  twitterError?: boolean;
-  relevanceScore: number;
+interface RedditPost {
+  id: string; title: string; preview: string; score: number;
+  num_comments: number; engagement: number; subreddit: string;
+  url: string; external_url: string | null; is_text_post: boolean;
+  author: string; created_utc: number; flair: string; source: string;
 }
 
 interface Tweet {
-  id?: string;
-  text?: string;
-  author?: string;
-  likes?: number;
-  retweets?: number;
-  replies?: number;
-  created_at?: string;
+  id?: string; text?: string; author?: string; author_name?: string;
+  likes?: number; retweets?: number; replies?: number;
+  created_at?: string; url?: string;
+}
+
+interface EnrichedPost extends RedditPost {
+  tweets: Tweet[];
+  twitterError?: boolean;
 }

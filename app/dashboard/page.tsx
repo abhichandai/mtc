@@ -16,6 +16,16 @@ interface Tweet {
 }
 
 interface Trend {
+  // Reddit fields
+  title?: string;
+  score?: number;
+  num_comments?: number;
+  engagement?: number;
+  subreddit?: string;
+  preview?: string;
+  flair?: string;
+  source?: string;
+  // Legacy Google Trends fields (kept for compatibility)
   query?: string;
   topic?: string;
   search_volume?: number;
@@ -23,16 +33,19 @@ interface Trend {
   increase_percentage?: number;
   growth?: number;
   categories?: Array<{ id?: number; name: string } | string>;
+  related_searches?: string[];
+  // Shared
   tweets?: Tweet[];
   twitterError?: boolean;
   relevanceScore?: number;
-  related_searches?: string[];
+  url?: string;
 }
 
 interface NicheData {
   keywords: string[];
   description: string;
   categories: string[];
+  subreddits?: string[];
 }
 
 interface ApiResult {
@@ -51,11 +64,19 @@ function formatNumber(n?: number): string {
 }
 
 function getTopicName(trend: Trend): string {
-  return trend.query || trend.topic || 'Unknown';
+  return trend.title || trend.query || trend.topic || 'Unknown';
 }
 
 function getVolume(trend: Trend): number {
-  return trend.search_volume || trend.traffic || 0;
+  return trend.score || trend.search_volume || trend.traffic || 0;
+}
+
+function getComments(trend: Trend): number {
+  return trend.num_comments || 0;
+}
+
+function getSubreddit(trend: Trend): string | null {
+  return trend.subreddit || null;
 }
 
 function getGrowth(trend: Trend): number {
@@ -63,6 +84,7 @@ function getGrowth(trend: Trend): number {
 }
 
 function getCategoryNames(trend: Trend): string[] {
+  if (trend.flair) return [trend.flair];
   if (!trend.categories) return [];
   return trend.categories.map(c => typeof c === 'string' ? c : c.name || '').filter(Boolean);
 }
@@ -91,10 +113,13 @@ function TrendCard({ trend, index, isSelected, onClick }: {
 }) {
   const topic = getTopicName(trend);
   const volume = getVolume(trend);
+  const comments = getComments(trend);
   const growth = getGrowth(trend);
   const cats = getCategoryNames(trend);
+  const subreddit = getSubreddit(trend);
   const tweets = trend.tweets || [];
-  const isHot = growth > 500 || (trend.relevanceScore ?? 0) > 80;
+  const isReddit = trend.source === 'reddit';
+  const isHot = (trend.engagement ?? 0) > 1000 || growth > 500 || (trend.relevanceScore ?? 0) > 80;
 
   return (
     <div
@@ -130,31 +155,69 @@ function TrendCard({ trend, index, isSelected, onClick }: {
 
       {/* Stats */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {volume > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
-              {formatNumber(volume)}
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>searches</span>
-          </div>
-        )}
-        {growth > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: isHot ? 'var(--hot-glow)' : 'var(--accent-dim)',
-            borderRadius: 5, padding: '3px 8px',
-          }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={isHot ? 'var(--hot)' : 'var(--accent)'} strokeWidth="2.5">
-              <path d="M23 6l-9.5 9.5-5-5L1 18"/>
-              <path d="M17 6h6v6"/>
-            </svg>
-            <span style={{ fontSize: 12, fontWeight: 700, color: isHot ? 'var(--hot)' : 'var(--accent)' }} className="num">
-              +{growth > 9999 ? '9999' : growth}%
-            </span>
-          </div>
+        {isReddit ? (
+          <>
+            {volume > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
+                  {formatNumber(volume)}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>upvotes</span>
+              </div>
+            )}
+            {comments > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
+                  {formatNumber(comments)}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>comments</span>
+              </div>
+            )}
+            {subreddit && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: 'rgba(255,69,0,0.08)',
+                borderRadius: 5, padding: '3px 8px',
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#FF6314' }}>r/{subreddit}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {volume > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
+                  {formatNumber(volume)}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>searches</span>
+              </div>
+            )}
+            {growth > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: isHot ? 'var(--hot-glow)' : 'var(--accent-dim)',
+                borderRadius: 5, padding: '3px 8px',
+              }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={isHot ? 'var(--hot)' : 'var(--accent)'} strokeWidth="2.5">
+                  <path d="M23 6l-9.5 9.5-5-5L1 18"/>
+                  <path d="M17 6h6v6"/>
+                </svg>
+                <span style={{ fontSize: 12, fontWeight: 700, color: isHot ? 'var(--hot)' : 'var(--accent)' }} className="num">
+                  +{growth > 9999 ? '9999' : growth}%
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -363,13 +426,15 @@ function DashboardContent() {
                   </p>
                 )}
               </div>
-              {result.niche.categories.length > 0 && (
+              {(result.niche.subreddits || result.niche.categories || []).length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-                    Matched:
+                    From:
                   </span>
-                  {result.niche.categories.map((cat, i) => (
-                    <span key={i} className="tag tag-neutral" style={{ fontSize: 11 }}>{cat}</span>
+                  {(result.niche.subreddits || result.niche.categories || []).map((item, i) => (
+                    <span key={i} className="tag tag-neutral" style={{ fontSize: 11 }}>
+                      {result.niche.subreddits ? `r/${item}` : item}
+                    </span>
                   ))}
                 </div>
               )}
