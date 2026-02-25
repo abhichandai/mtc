@@ -36,13 +36,10 @@ export async function POST(req: NextRequest) {
 
 Niche keywords: "${nicheString}"
 
-Your job is to identify which of the 381 Google trending topics are actually relevant to this niche.
-
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "categories": ["2-4 Google Trends category names that match this niche. Choose from: Sci/Tech, Health, Business, Entertainment, Sports, Politics, Education, Travel, Food, Fashion, Autos, Games, Finance"],
-  "matchTerms": ["20-30 specific words/phrases/names that would appear in trending topics for this niche. Be very specific. For 'AI tools productivity solopreneurs' include terms like: ChatGPT, OpenAI, Claude, Gemini, automation, productivity app, side hustle, freelancer, creator economy, startup, SaaS, workflow, etc."],
-  "excludeTerms": ["5-10 terms that would indicate a trend is NOT relevant to this niche - e.g. for AI/tech niche exclude: sports scores, celebrity gossip, TV shows unless tech-related"],
+  "googleCategories": ["2-4 Google Trends category names. Choose ONLY from this exact list: Technology, Science, Business and Finance, Jobs and Education, Health, Sports, Entertainment, Politics, Law and Government, Climate, Games, Travel and Transportation, Food and Drink, Shopping, Hobbies and Leisure, Beauty and Fashion, Autos and Vehicles, Other"],
+  "matchPhrases": ["10-15 MULTI-WORD phrases or specific proper nouns that would appear verbatim in trending topic titles. NEVER include single common words. Good examples: 'openai', 'chatgpt', 'artificial intelligence', 'machine learning', 'side hustle', 'solopreneur'. Bad examples: 'app', 'tech', 'short', 'tools', 'content' (too short/generic and cause false matches)"],
   "description": "one crisp sentence describing this creator's niche"
 }`,
         }],
@@ -50,7 +47,13 @@ Return ONLY valid JSON (no markdown, no explanation):
 
       const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
       const cleaned = text.replace(/```json|```/g, '').trim();
-      nicheAnalysis = JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+      nicheAnalysis = {
+        categories: parsed.googleCategories || [],
+        matchTerms: parsed.matchPhrases || keywords,
+        description: parsed.description || nicheString,
+        excludeTerms: [],
+      };
     } catch (e) {
       console.error('Claude analysis failed, using keywords directly:', e);
       nicheAnalysis.matchTerms = keywords;
@@ -80,11 +83,21 @@ Return ONLY valid JSON (no markdown, no explanation):
       throw new Error('No trends returned from backend');
     }
 
-    // Step 3: Score trends — relevance-first, volume/growth as tiebreakers only
-    const matchTermsLower = nicheAnalysis.matchTerms.map(t => t.toLowerCase());
-    const categoriesLower = nicheAnalysis.categories.map(c => c.toLowerCase());
+    // Step 3: Score trends — category gate first, then whole-word phrase matching
+    const matchPhrasesLower = nicheAnalysis.matchTerms.map(t => t.toLowerCase().trim());
+    const relevantCategories = nicheAnalysis.categories.map(c => c.toLowerCase());
     const keywordsLower = keywords.map(k => k.toLowerCase());
-    const excludeTermsLower = (nicheAnalysis.excludeTerms || []).map(t => t.toLowerCase());
+
+    // Helper: whole-word match (prevents "app" matching "approval")
+    const wholeWordMatch = (text: string, phrase: string): boolean => {
+      if (phrase.includes(' ')) {
+        // Multi-word phrase: just check if it appears as a substring (already specific enough)
+        return text.includes(phrase);
+      }
+      // Single word: require word boundaries
+      const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`\\b${escaped}\\b`).test(text);
+    };
 
     const scoredTrends = allTrends.map((trend: RawTrend) => {
       const topicLower = (trend.query || trend.topic || '').toLowerCase();
@@ -94,53 +107,53 @@ Return ONLY valid JSON (no markdown, no explanation):
       const relatedSearches = (trend.related_searches || trend.related_queries || [])
         .map((r: RelatedSearch) => (typeof r === 'string' ? r : r.query || '').toLowerCase());
 
-      // Check for hard exclusions first
-      for (const ex of excludeTermsLower) {
-        if (topicLower.includes(ex)) return { ...trend, relevanceScore: -1 };
-      }
+      // GATE 1: Category must match — if no category overlap, skip entirely
+      // (Exception: if we have very few relevant categories, be more lenient)
+      const hasCategoryMatch = relevantCategories.length === 0 || 
+        trendCategories.some(tc => 
+          relevantCategories.some(rc => tc.includes(rc) || rc.includes(tc))
+        );
 
-      let relevanceScore = 0; // Pure relevance, no volume/growth here
+      if (!hasCategoryMatch) return { ...trend, relevanceScore: 0 };
 
-      // Strongest signal: direct keyword match in the topic title
+      let relevanceScore = 0;
+
+      // Direct keyword match in topic title (whole word)
       for (const kw of keywordsLower) {
-        if (topicLower.includes(kw)) relevanceScore += 50;
+        if (wholeWordMatch(topicLower, kw)) relevanceScore += 60;
       }
 
-      // Strong signal: Claude's specific match terms in the topic title
-      for (const term of matchTermsLower) {
-        if (term.length > 2 && topicLower.includes(term)) relevanceScore += 30;
+      // Match phrase in topic title (whole word)
+      for (const phrase of matchPhrasesLower) {
+        if (phrase.length > 3 && wholeWordMatch(topicLower, phrase)) relevanceScore += 40;
       }
 
-      // Medium signal: match terms found in related searches
-      for (const term of matchTermsLower) {
+      // Match phrase in related searches (whole word)
+      for (const phrase of matchPhrasesLower) {
         for (const rel of relatedSearches) {
-          if (term.length > 3 && rel.includes(term)) relevanceScore += 10;
+          if (phrase.length > 4 && wholeWordMatch(rel, phrase)) relevanceScore += 8;
         }
       }
 
-      // Category match (only counts if there's already some relevance signal)
+      // Category match adds bonus points (only when already relevant)
       if (relevanceScore > 0) {
-        for (const cat of categoriesLower) {
-          for (const trendCat of trendCategories) {
-            if (trendCat.includes(cat) || cat.includes(trendCat)) relevanceScore += 20;
-          }
-        }
+        relevanceScore += 15; // base bonus for being in the right category
+      } else {
+        // In the right category but no keyword match — include with low score
+        // so we can still surface some results when keyword matches are scarce
+        relevanceScore = 5;
       }
 
-      // Volume and growth are ONLY tiebreakers — applied as a small fraction
-      // so they never override a relevance signal
+      // Volume/growth only as minor tiebreakers
       const volume = trend.search_volume || trend.traffic || 0;
       const growth = trend.increase_percentage || trend.growth || 0;
-      const volumeBoost = volume > 0 ? Math.log10(volume + 1) * 2 : 0; // max ~12 pts
-      const growthBoost = growth > 0 ? Math.min(growth / 100, 5) : 0;  // max ~5 pts
+      if (volume > 0) relevanceScore += Math.log10(volume + 1) * 1.5; // max ~6 pts
+      if (growth > 0) relevanceScore += Math.min(growth / 200, 3);     // max ~3 pts
 
-      return { 
-        ...trend, 
-        relevanceScore: relevanceScore + volumeBoost + growthBoost 
-      };
+      return { ...trend, relevanceScore };
     });
 
-    // Filter out excluded trends and those with zero relevance, then sort
+    // Filter to only trends with a category match (score > 0), sort by relevance
     const relevantTrends = scoredTrends
       .filter(t => t.relevanceScore > 0)
       .sort((a, b) => b.relevanceScore - a.relevanceScore);
@@ -181,6 +194,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       },
       trends: finalTrends,
       total_analyzed: allTrends.length,
+      total_matched: relevantTrends.length,
     });
 
   } catch (error) {
