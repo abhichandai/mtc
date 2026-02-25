@@ -8,43 +8,35 @@ interface Tweet {
   id?: string;
   text?: string;
   author?: string;
-  author_handle?: string;
+  author_name?: string;
   likes?: number;
   retweets?: number;
   replies?: number;
   created_at?: string;
+  url?: string;
 }
 
 interface Trend {
   // Reddit fields
+  id?: string;
   title?: string;
+  preview?: string;
   score?: number;
   num_comments?: number;
   engagement?: number;
   subreddit?: string;
-  preview?: string;
+  url?: string;
+  is_text_post?: boolean;
+  author?: string;
   flair?: string;
-  source?: string;
-  // Legacy Google Trends fields (kept for compatibility)
-  query?: string;
-  topic?: string;
-  search_volume?: number;
-  traffic?: number;
-  increase_percentage?: number;
-  growth?: number;
-  categories?: Array<{ id?: number; name: string } | string>;
-  related_searches?: string[];
-  // Shared
+  // Twitter enrichment
   tweets?: Tweet[];
   twitterError?: boolean;
-  relevanceScore?: number;
-  url?: string;
 }
 
 interface NicheData {
   keywords: string[];
   description: string;
-  categories: string[];
   subreddits?: string[];
 }
 
@@ -53,54 +45,29 @@ interface ApiResult {
   niche: NicheData;
   trends: Trend[];
   total_analyzed: number;
+  source?: string;
   error?: string;
 }
 
 function formatNumber(n?: number): string {
-  if (!n) return '—';
+  if (!n) return '0';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return n.toString();
 }
 
-function getTopicName(trend: Trend): string {
-  return trend.title || trend.query || trend.topic || 'Unknown';
-}
-
-function getVolume(trend: Trend): number {
-  return trend.score || trend.search_volume || trend.traffic || 0;
-}
-
-function getComments(trend: Trend): number {
-  return trend.num_comments || 0;
-}
-
-function getSubreddit(trend: Trend): string | null {
-  return trend.subreddit || null;
-}
-
-function getGrowth(trend: Trend): number {
-  return trend.increase_percentage || trend.growth || 0;
-}
-
-function getCategoryNames(trend: Trend): string[] {
-  if (trend.flair) return [trend.flair];
-  if (!trend.categories) return [];
-  return trend.categories.map(c => typeof c === 'string' ? c : c.name || '').filter(Boolean);
-}
-
 function TrendCardSkeleton() {
   return (
     <div className="card" style={{ padding: 20, pointerEvents: 'none' }}>
-      <div className="skeleton" style={{ height: 20, width: '60%', marginBottom: 12 }} />
-      <div className="skeleton" style={{ height: 14, width: '40%', marginBottom: 16 }} />
+      <div className="skeleton" style={{ height: 14, width: '30%', marginBottom: 10 }} />
+      <div className="skeleton" style={{ height: 20, width: '85%', marginBottom: 8 }} />
+      <div className="skeleton" style={{ height: 16, width: '70%', marginBottom: 16 }} />
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <div className="skeleton" style={{ height: 24, width: 80 }} />
-        <div className="skeleton" style={{ height: 24, width: 60 }} />
+        <div className="skeleton" style={{ height: 24, width: 70 }} />
+        <div className="skeleton" style={{ height: 24, width: 70 }} />
       </div>
       <div className="skeleton" style={{ height: 14, width: '100%', marginBottom: 6 }} />
-      <div className="skeleton" style={{ height: 14, width: '80%', marginBottom: 6 }} />
-      <div className="skeleton" style={{ height: 14, width: '90%' }} />
+      <div className="skeleton" style={{ height: 14, width: '80%' }} />
     </div>
   );
 }
@@ -111,15 +78,8 @@ function TrendCard({ trend, index, isSelected, onClick }: {
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const topic = getTopicName(trend);
-  const volume = getVolume(trend);
-  const comments = getComments(trend);
-  const growth = getGrowth(trend);
-  const cats = getCategoryNames(trend);
-  const subreddit = getSubreddit(trend);
   const tweets = trend.tweets || [];
-  const isReddit = trend.source === 'reddit';
-  const isHot = (trend.engagement ?? 0) > 1000 || growth > 500 || (trend.relevanceScore ?? 0) > 80;
+  const isHot = (trend.score || 0) > 1000 || (trend.num_comments || 0) > 200;
 
   return (
     <div
@@ -127,152 +87,106 @@ function TrendCard({ trend, index, isSelected, onClick }: {
       onClick={onClick}
       style={{ padding: '20px' }}
     >
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            {isHot ? <div className="hot-dot" /> : <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, opacity: 0.6 }} />}
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: isHot ? 'var(--hot)' : 'var(--accent)' }}>
-              {isHot ? 'Hot' : 'Trending'}
-            </span>
-          </div>
-          <h3 style={{
-            fontSize: 16, fontWeight: 700, lineHeight: 1.25,
-            color: 'var(--text)', letterSpacing: '-0.01em',
-            wordBreak: 'break-word',
+      {/* Subreddit + rank */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isHot ? <div className="hot-dot" /> : <div className="live-dot" />}
+          <span style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+            color: isHot ? 'var(--hot)' : 'var(--accent)',
+            textTransform: 'uppercase',
           }}>
-            {topic}
-          </h3>
+            r/{trend.subreddit || 'reddit'}
+          </span>
         </div>
-        <div style={{
+        <span style={{
           fontSize: 11, fontWeight: 700, color: 'var(--text-dim)',
           background: 'rgba(255,255,255,0.04)',
-          borderRadius: 6, padding: '4px 8px', flexShrink: 0,
+          borderRadius: 6, padding: '4px 8px',
         }}>
           #{index + 1}
+        </span>
+      </div>
+
+      {/* Title */}
+      <h3 style={{
+        fontSize: 15, fontWeight: 700, lineHeight: 1.35,
+        color: 'var(--text)', letterSpacing: '-0.01em',
+        marginBottom: 12,
+        display: '-webkit-box',
+        WebkitLineClamp: 3,
+        WebkitBoxOrient: 'vertical' as const,
+        overflow: 'hidden',
+      }}>
+        {trend.title}
+      </h3>
+
+      {/* Stats row */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Upvote arrow */}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill={isHot ? 'var(--hot)' : 'var(--accent)'}>
+            <path d="M12 4l8 8h-5v8H9v-8H4z"/>
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 700, color: isHot ? 'var(--hot)' : 'var(--accent)' }}>
+            {formatNumber(trend.score)}
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>upvotes</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>
+            {formatNumber(trend.num_comments)}
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>comments</span>
         </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {isReddit ? (
-          <>
-            {volume > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
-                  {formatNumber(volume)}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>upvotes</span>
-              </div>
-            )}
-            {comments > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
-                  {formatNumber(comments)}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>comments</span>
-              </div>
-            )}
-            {subreddit && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                background: 'rgba(255,69,0,0.08)',
-                borderRadius: 5, padding: '3px 8px',
-              }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#FF6314' }}>r/{subreddit}</span>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {volume > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }} className="num">
-                  {formatNumber(volume)}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>searches</span>
-              </div>
-            )}
-            {growth > 0 && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                background: isHot ? 'var(--hot-glow)' : 'var(--accent-dim)',
-                borderRadius: 5, padding: '3px 8px',
-              }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={isHot ? 'var(--hot)' : 'var(--accent)'} strokeWidth="2.5">
-                  <path d="M23 6l-9.5 9.5-5-5L1 18"/>
-                  <path d="M17 6h6v6"/>
-                </svg>
-                <span style={{ fontSize: 12, fontWeight: 700, color: isHot ? 'var(--hot)' : 'var(--accent)' }} className="num">
-                  +{growth > 9999 ? '9999' : growth}%
-                </span>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Category tags */}
-      {cats.length > 0 && (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
-          {cats.slice(0, 3).map((cat, i) => (
-            <span key={i} className="tag tag-neutral" style={{ fontSize: 10 }}>{cat}</span>
-          ))}
-        </div>
+      {/* Preview text */}
+      {trend.preview && (
+        <p style={{
+          fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5,
+          marginBottom: 14,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical' as const,
+          overflow: 'hidden',
+        }}>
+          {trend.preview}
+        </p>
       )}
 
       {/* Twitter previews */}
-      {tweets.length > 0 ? (
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+      {tweets.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginBottom: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--text-muted)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--text-dim)">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
             </svg>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
-              {tweets.length} conversation{tweets.length !== 1 ? 's' : ''} found
+            <span style={{ fontSize: 11, color: 'var(--text-dim)', fontWeight: 600 }}>
+              {tweets.length} tweet{tweets.length !== 1 ? 's' : ''} found
             </span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {tweets.slice(0, 2).map((tweet, i) => (
-              <div key={i} style={{
-                fontSize: 12, color: 'var(--text-muted)',
-                lineHeight: 1.4,
-                padding: '8px 10px',
-                background: 'rgba(255,255,255,0.02)',
-                borderRadius: 6,
-                borderLeft: '2px solid var(--border-bright)',
-                overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical' as const,
-              }}>
-                {tweet.text || '...'}
-              </div>
-            ))}
+          <div style={{
+            fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4,
+            padding: '7px 10px',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: 6,
+            borderLeft: '2px solid var(--border-bright)',
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical' as const,
+          }}>
+            {tweets[0]?.text || '...'}
           </div>
-        </div>
-      ) : (
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
-            </svg>
-            No Twitter data available
-          </span>
         </div>
       )}
 
-      {/* View more indicator */}
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-dim)' }}>
+      {/* View more */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-dim)', marginTop: 4 }}>
         <span style={{ fontSize: 11, fontWeight: 600 }}>View full conversation</span>
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -295,10 +209,7 @@ function DashboardContent() {
   const [lastUpdated, setLastUpdated] = useState<string>('');
 
   const fetchTrends = useCallback(async () => {
-    if (!keywords.length) {
-      router.push('/');
-      return;
-    }
+    if (!keywords.length) { router.push('/'); return; }
     setLoading(true);
     setError(null);
     try {
@@ -318,9 +229,7 @@ function DashboardContent() {
     }
   }, [keywords.join(',')]);
 
-  useEffect(() => {
-    fetchTrends();
-  }, [fetchTrends]);
+  useEffect(() => { fetchTrends(); }, [fetchTrends]);
 
   if (!keywords.length) return null;
 
@@ -336,10 +245,7 @@ function DashboardContent() {
         position: 'sticky', top: 0, zIndex: 40,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button
-            onClick={() => router.push('/')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-          >
+          <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div className="live-dot" />
             <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', letterSpacing: '-0.01em' }}>MTC</span>
           </button>
@@ -351,9 +257,7 @@ function DashboardContent() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {lastUpdated && (
-            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Updated {lastUpdated}</span>
-          )}
+          {lastUpdated && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Updated {lastUpdated}</span>}
           <button className="btn-ghost" onClick={fetchTrends} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
               style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
@@ -367,34 +271,30 @@ function DashboardContent() {
         </div>
       </header>
 
-      {/* Content */}
       <main style={{ flex: 1, padding: '24px', maxWidth: 1200, width: '100%', margin: '0 auto' }}>
 
-        {/* Loading state */}
+        {/* Loading */}
         {loading && (
           <div>
-            <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div className="skeleton" style={{ height: 28, width: 300 }} />
-              <div className="skeleton" style={{ height: 20, width: 120 }} />
+            <div style={{ marginBottom: 24 }}>
+              <div className="skeleton" style={{ height: 28, width: 280, marginBottom: 8 }} />
+              <div className="skeleton" style={{ height: 16, width: 200 }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
               {Array.from({ length: 6 }).map((_, i) => <TrendCardSkeleton key={i} />)}
             </div>
             <div style={{ marginTop: 40, textAlign: 'center' }}>
-              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <div className="live-dot" style={{ width: 10, height: 10 }} />
                 <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-                  Analyzing <strong style={{ color: 'var(--accent)' }}>{keywordsParam}</strong>...
-                </p>
-                <p style={{ fontSize: 12, color: 'var(--text-dim)', maxWidth: 300, textAlign: 'center' }}>
-                  Scanning 381 trends · Matching your niche · Fetching conversations
+                  Finding what <strong style={{ color: 'var(--accent)' }}>{keywordsParam}</strong> communities are talking about...
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Error state */}
+        {/* Error */}
         {!loading && error && (
           <div style={{ textAlign: 'center', paddingTop: 80 }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>⚡</div>
@@ -411,44 +311,33 @@ function DashboardContent() {
         {/* Results */}
         {!loading && !error && result && (
           <div className="animate-fade-in">
-            {/* Results header */}
             <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                   <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)' }}>
-                    {result.trends.length} trends matched
+                    {result.trends.length} topics trending now
                   </h1>
-                  <span className="tag tag-accent">{result.total_analyzed} analyzed</span>
                 </div>
                 {result.niche.description && (
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-                    {result.niche.description}
-                  </p>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>{result.niche.description}</p>
                 )}
               </div>
-              {(result.niche.subreddits || result.niche.categories || []).length > 0 && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {result.niche.subreddits && result.niche.subreddits.length > 0 && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
                     From:
                   </span>
-                  {(result.niche.subreddits || result.niche.categories || []).map((item, i) => (
-                    <span key={i} className="tag tag-neutral" style={{ fontSize: 11 }}>
-                      {result.niche.subreddits ? `r/${item}` : item}
-                    </span>
+                  {result.niche.subreddits.slice(0, 5).map((sub, i) => (
+                    <span key={i} className="tag tag-neutral" style={{ fontSize: 10 }}>r/{sub}</span>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Trend grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-              gap: 14,
-            }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
               {result.trends.map((trend, i) => (
                 <TrendCard
-                  key={i}
+                  key={trend.id || i}
                   trend={trend}
                   index={i}
                   isSelected={selectedTrend === trend}
@@ -457,22 +346,16 @@ function DashboardContent() {
               ))}
             </div>
 
-            {/* Empty state */}
             {result.trends.length === 0 && (
               <div style={{ textAlign: 'center', paddingTop: 60 }}>
-                <p style={{ fontSize: 18, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  No matching trends found
-                </p>
-                <p style={{ fontSize: 14, color: 'var(--text-dim)' }}>
-                  Try broader keywords or check back in a few hours when trends refresh
-                </p>
+                <p style={{ fontSize: 18, color: 'var(--text-muted)', marginBottom: 8 }}>No posts found</p>
+                <p style={{ fontSize: 14, color: 'var(--text-dim)' }}>Try different keywords</p>
               </div>
             )}
           </div>
         )}
       </main>
 
-      {/* Detail panel */}
       {selectedTrend && (
         <>
           <div className="panel-overlay" onClick={() => setSelectedTrend(null)} />
@@ -482,9 +365,7 @@ function DashboardContent() {
         </>
       )}
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
