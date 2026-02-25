@@ -13,28 +13,37 @@ export async function POST(req: NextRequest) {
 
     const nicheString = keywords.filter(Boolean).join(', ');
 
-    // Step 1: Use Claude to understand the niche and generate matching terms
-    let nicheAnalysis: { categories: string[]; matchTerms: string[]; description: string } = {
+    // Step 1: Use Claude to deeply understand the niche
+    let nicheAnalysis: { 
+      categories: string[]; 
+      matchTerms: string[]; 
+      description: string;
+      excludeTerms: string[];
+    } = {
       categories: [],
       matchTerms: keywords,
       description: nicheString,
+      excludeTerms: [],
     };
 
     try {
       const claudeResponse = await client.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
+        max_tokens: 800,
         messages: [{
           role: 'user',
-          content: `You are analyzing a content creator's niche to find relevant trending topics.
+          content: `You are helping a content creator find trending topics relevant to their niche.
 
 Niche keywords: "${nicheString}"
 
+Your job is to identify which of the 381 Google trending topics are actually relevant to this niche.
+
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "categories": ["list of 2-4 Google Trends category names most relevant to this niche, from: Entertainment, Sports, Sci/Tech, Health, Business, Politics, Education, Travel, Food, Fashion, Autos, Games, Finance"],
-  "matchTerms": ["10-15 words/phrases that would appear in trending topics relevant to this niche"],
-  "description": "one sentence describing this niche"
+  "categories": ["2-4 Google Trends category names that match this niche. Choose from: Sci/Tech, Health, Business, Entertainment, Sports, Politics, Education, Travel, Food, Fashion, Autos, Games, Finance"],
+  "matchTerms": ["20-30 specific words/phrases/names that would appear in trending topics for this niche. Be very specific. For 'AI tools productivity solopreneurs' include terms like: ChatGPT, OpenAI, Claude, Gemini, automation, productivity app, side hustle, freelancer, creator economy, startup, SaaS, workflow, etc."],
+  "excludeTerms": ["5-10 terms that would indicate a trend is NOT relevant to this niche - e.g. for AI/tech niche exclude: sports scores, celebrity gossip, TV shows unless tech-related"],
+  "description": "one crisp sentence describing this creator's niche"
 }`,
         }],
       });
@@ -47,73 +56,97 @@ Return ONLY valid JSON (no markdown, no explanation):
       nicheAnalysis.matchTerms = keywords;
     }
 
-    // Step 2: Fetch all Google Trends from Flask backend
-    const trendsRes = await fetch(`${BACKEND_URL}/trends/google?limit=381`, {
-      signal: AbortSignal.timeout(15000),
-    });
+    // Step 2: Fetch ALL 381 Google Trends from Flask backend
+    // First try with cache, fall back to fresh if we get too few results
+    let allTrends: RawTrend[] = [];
+    
+    const tryFetch = async (fresh: boolean) => {
+      const url = `${BACKEND_URL}/trends/google?limit=381${fresh ? '&fresh=true' : ''}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+      const data = await res.json();
+      return data.trends || data.data?.trends || [];
+    };
 
-    if (!trendsRes.ok) {
-      throw new Error(`Backend returned ${trendsRes.status}`);
+    allTrends = await tryFetch(false);
+    
+    // If cache was stale and only returned a small set, force fresh
+    if (allTrends.length < 100) {
+      console.log(`Only got ${allTrends.length} trends from cache, forcing fresh fetch`);
+      allTrends = await tryFetch(true);
     }
-
-    const trendsData = await trendsRes.json();
-    const allTrends: RawTrend[] = trendsData.trends || trendsData.data?.trends || [];
 
     if (allTrends.length === 0) {
       throw new Error('No trends returned from backend');
     }
 
-    // Step 3: Score and filter trends by niche relevance
+    // Step 3: Score trends — relevance-first, volume/growth as tiebreakers only
     const matchTermsLower = nicheAnalysis.matchTerms.map(t => t.toLowerCase());
     const categoriesLower = nicheAnalysis.categories.map(c => c.toLowerCase());
     const keywordsLower = keywords.map(k => k.toLowerCase());
+    const excludeTermsLower = (nicheAnalysis.excludeTerms || []).map(t => t.toLowerCase());
 
     const scoredTrends = allTrends.map((trend: RawTrend) => {
       const topicLower = (trend.query || trend.topic || '').toLowerCase();
-      const trendCategories = (trend.categories || []).map((c: { name: string } | string) =>
+      const trendCategories = (trend.categories || []).map((c: TrendCategory) =>
         (typeof c === 'string' ? c : c.name || '').toLowerCase()
       );
       const relatedSearches = (trend.related_searches || trend.related_queries || [])
-        .map((r: string | { query: string }) => (typeof r === 'string' ? r : r.query || '').toLowerCase());
+        .map((r: RelatedSearch) => (typeof r === 'string' ? r : r.query || '').toLowerCase());
 
-      let score = 0;
+      // Check for hard exclusions first
+      for (const ex of excludeTermsLower) {
+        if (topicLower.includes(ex)) return { ...trend, relevanceScore: -1 };
+      }
 
-      // Direct keyword match in topic
+      let relevanceScore = 0; // Pure relevance, no volume/growth here
+
+      // Strongest signal: direct keyword match in the topic title
       for (const kw of keywordsLower) {
-        if (topicLower.includes(kw)) score += 40;
+        if (topicLower.includes(kw)) relevanceScore += 50;
       }
 
-      // Match terms from Claude
+      // Strong signal: Claude's specific match terms in the topic title
       for (const term of matchTermsLower) {
-        if (topicLower.includes(term)) score += 25;
+        if (term.length > 2 && topicLower.includes(term)) relevanceScore += 30;
+      }
+
+      // Medium signal: match terms found in related searches
+      for (const term of matchTermsLower) {
         for (const rel of relatedSearches) {
-          if (rel.includes(term)) score += 8;
+          if (term.length > 3 && rel.includes(term)) relevanceScore += 10;
         }
       }
 
-      // Category match
-      for (const cat of categoriesLower) {
-        for (const trendCat of trendCategories) {
-          if (trendCat.includes(cat) || cat.includes(trendCat)) score += 20;
+      // Category match (only counts if there's already some relevance signal)
+      if (relevanceScore > 0) {
+        for (const cat of categoriesLower) {
+          for (const trendCat of trendCategories) {
+            if (trendCat.includes(cat) || cat.includes(trendCat)) relevanceScore += 20;
+          }
         }
       }
 
-      // Boost by search volume (log scale)
+      // Volume and growth are ONLY tiebreakers — applied as a small fraction
+      // so they never override a relevance signal
       const volume = trend.search_volume || trend.traffic || 0;
-      if (volume > 0) score += Math.log10(volume + 1) * 5;
-
-      // Boost by growth rate
       const growth = trend.increase_percentage || trend.growth || 0;
-      if (growth > 0) score += Math.min(growth / 10, 10);
+      const volumeBoost = volume > 0 ? Math.log10(volume + 1) * 2 : 0; // max ~12 pts
+      const growthBoost = growth > 0 ? Math.min(growth / 100, 5) : 0;  // max ~5 pts
 
-      return { ...trend, relevanceScore: score };
+      return { 
+        ...trend, 
+        relevanceScore: relevanceScore + volumeBoost + growthBoost 
+      };
     });
 
-    // Sort by relevance score
-    scoredTrends.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    // Filter out excluded trends and those with zero relevance, then sort
+    const relevantTrends = scoredTrends
+      .filter(t => t.relevanceScore > 0)
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-    // Take top 15 for Twitter enrichment (we'll return top 10 after)
-    const top15 = scoredTrends.slice(0, 15);
+    // Take top 15 for Twitter enrichment
+    const top15 = relevantTrends.slice(0, 15);
 
     // Step 4: Enrich with Twitter conversations
     const enrichedTrends = await Promise.allSettled(
@@ -160,6 +193,9 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 // Types
+type TrendCategory = { id?: number; name: string } | string;
+type RelatedSearch = string | { query: string };
+
 interface RawTrend {
   query?: string;
   topic?: string;
@@ -167,9 +203,9 @@ interface RawTrend {
   traffic?: number;
   increase_percentage?: number;
   growth?: number;
-  categories?: Array<{ id?: number; name: string } | string>;
-  related_searches?: Array<string | { query: string }>;
-  related_queries?: Array<string | { query: string }>;
+  categories?: TrendCategory[];
+  related_searches?: RelatedSearch[];
+  related_queries?: RelatedSearch[];
   relevanceScore?: number;
 }
 
