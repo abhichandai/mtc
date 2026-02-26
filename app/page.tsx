@@ -60,12 +60,12 @@ export default function LandingPage() {
       <div className="glow-orb" style={{
         width: 600, height: 400,
         top: -100, left: '50%', transform: 'translateX(-50%)',
-        background: 'radial-gradient(ellipse, rgba(170,255,47,0.07) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse, rgba(124,92,252,0.07) 0%, transparent 70%)',
       }} />
       <div className="glow-orb" style={{
         width: 300, height: 300,
         bottom: '10%', right: '5%',
-        background: 'radial-gradient(ellipse, rgba(255,69,69,0.05) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse, rgba(124,92,252,0.04) 0%, transparent 70%)',
       }} />
 
       {/* Header */}
@@ -75,7 +75,7 @@ export default function LandingPage() {
         position: 'relative', zIndex: 10,
         borderBottom: '1px solid var(--border)',
         backdropFilter: 'blur(10px)',
-        background: 'rgba(7,9,14,0.6)',
+        background: 'var(--header-bg)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="live-dot" />
@@ -138,7 +138,7 @@ export default function LandingPage() {
           borderRadius: 16,
           padding: '32px',
           width: '100%', maxWidth: 560,
-          boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          boxShadow: '0 24px 80px rgba(90,70,180,0.08)',
         }}>
           <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 20 }}>
             Describe your niche in 3 keywords
@@ -202,7 +202,7 @@ export default function LandingPage() {
                   key={i}
                   onClick={() => setExample(example)}
                   style={{
-                    background: 'rgba(255,255,255,0.03)',
+                    background: 'var(--surface-2)',
                     border: '1px solid var(--border)',
                     borderRadius: 6,
                     padding: '5px 10px',
@@ -266,3 +266,4 @@ export default function LandingPage() {
     </div>
   );
 }
+
