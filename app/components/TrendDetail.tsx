@@ -82,7 +82,7 @@ function TweetItem({ tweet }: { tweet: Tweet }) {
         {engagement > 0 && (
           <div style={{
             fontSize: 11, fontWeight: 600, color: 'var(--text-dim)',
-            background: 'rgba(255,255,255,0.03)',
+            background: 'var(--surface-2)',
             borderRadius: 5, padding: '3px 7px',
             flexShrink: 0,
           }}>
@@ -248,7 +248,7 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
               </div>
             )}
             {(trend.increase_percentage || trend.growth || 0) > 0 && (
-              <div style={{ background: isHot ? 'var(--hot-glow)' : 'var(--accent-dim)', border: `1px solid ${isHot ? 'rgba(255,69,69,0.2)' : 'rgba(170,255,47,0.2)'}`, borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 100 }}>
+              <div style={{ background: isHot ? 'var(--hot-glow)' : 'var(--accent-dim)', border: `1px solid ${isHot ? 'rgba(255,69,69,0.2)' : 'rgba(124,92,252,0.2)'}`, borderRadius: 8, padding: '10px 14px', flex: 1, minWidth: 100 }}>
                 <div style={{ fontSize: 11, color: isHot ? 'var(--hot)' : 'var(--accent)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Growth</div>
                 <div style={{ fontSize: 20, fontWeight: 800, color: isHot ? 'var(--hot)' : 'var(--accent)' }} className="num">+{(trend.increase_percentage || trend.growth || 0) > 9999 ? '9999' : (trend.increase_percentage || trend.growth)}%</div>
               </div>
@@ -340,7 +340,7 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
             </h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {trend.related_searches.slice(0, 12).map((search, i) => (
-                <span key={i} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px' }}>
+                <span key={i} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px' }}>
                   {typeof search === 'string' ? search : String(search)}
                 </span>
               ))}
@@ -375,3 +375,4 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
     </div>
   );
 }
+
