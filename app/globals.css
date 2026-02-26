@@ -99,10 +99,11 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes scan {
-  0% { top: 0%; }
-  100% { top: 100%; }
+@keyframes modal-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+
 
 .animate-fade-up { animation: fade-up 0.5s ease forwards; }
 .animate-fade-in { animation: fade-in 0.4s ease forwards; }
@@ -305,3 +306,4 @@ body {
 .tweet-card:hover {
   border-color: var(--border-bright);
 }
+
