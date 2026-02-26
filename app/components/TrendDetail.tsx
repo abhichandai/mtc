@@ -56,6 +56,7 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [narrativeError, setNarrativeError] = useState('');
   const [commentCount, setCommentCount] = useState(0);
+  const [postBody, setPostBody] = useState(trend.preview || '');
 
   const topic = getTopicName(trend);
   const isReddit = isRedditPost(trend);
@@ -66,6 +67,7 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
   useEffect(() => {
     setNarrativesState('idle');
     setNarratives([]);
+    setPostBody(trend.preview || '');
     const handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
@@ -84,6 +86,7 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to generate narratives');
       setNarratives(data.narratives || []);
       setCommentCount(data.comment_count || 0);
+      if (data.post_body) setPostBody(data.post_body);
       setNarrativesState('done');
     } catch (e) {
       setNarrativeError(e instanceof Error ? e.message : 'Something went wrong');
@@ -180,10 +183,10 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
           </div>
         )}
 
-        {/* Post body preview */}
-        {isReddit && trend.preview && trend.preview.trim() && (
+        {/* Post body preview — populated once narratives are fetched */}
+        {isReddit && postBody && postBody.trim() && (
           <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 20, padding: '12px 14px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            {trend.preview}
+            {postBody.slice(0, 400)}{postBody.length > 400 ? '...' : ''}
           </p>
         )}
 
