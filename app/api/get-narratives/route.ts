@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
     // Step 1: Fetch top comments from backend
     const commentsRes = await fetch(
-      `${BACKEND_URL}/trends/reddit/comments?url=${encodeURIComponent(postUrl)}&amount=20`,
+      `${BACKEND_URL}/trends/reddit/comments?url=${encodeURIComponent(postUrl)}`,
       { signal: AbortSignal.timeout(15000) }
     );
     const commentsData = await commentsRes.json();
@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
     if (!commentsData.success || !commentsData.comments?.length) {
       return NextResponse.json({ error: 'No comments found for this post' }, { status: 404 });
     }
+
+    const postBody = commentsData.post_body || '';
 
     // Take top 15 comments by score for synthesis
     const topComments = commentsData.comments
@@ -40,7 +42,7 @@ export async function GET(req: NextRequest) {
         content: `You are analyzing Reddit comments to extract the top 3 narratives for a content creator.
 
 Post title: "${postTitle}"
-
+${postBody ? `\nPost body: "${postBody.slice(0, 500)}"\n` : ''}
 Top comments by upvotes:
 ${topComments}
 
@@ -68,6 +70,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       success: true,
       narratives: parsed.narratives || [],
       comment_count: commentsData.count,
+      post_body: postBody,   // return so frontend can update the card preview
     });
 
   } catch (error) {
@@ -78,3 +81,4 @@ Return ONLY valid JSON (no markdown, no explanation):
     );
   }
 }
+
