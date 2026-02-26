@@ -102,7 +102,7 @@ function TrendCard({ trend, index, isSelected, onClick }: {
         </div>
         <span style={{
           fontSize: 11, fontWeight: 700, color: 'var(--text-dim)',
-          background: 'rgba(255,255,255,0.04)',
+          background: 'var(--surface-2)',
           borderRadius: 6, padding: '4px 8px',
         }}>
           #{index + 1}
@@ -172,7 +172,7 @@ function TrendCard({ trend, index, isSelected, onClick }: {
           <div style={{
             fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4,
             padding: '7px 10px',
-            background: 'rgba(255,255,255,0.02)',
+            background: 'var(--surface-2)',
             borderRadius: 6,
             borderLeft: '2px solid var(--border-bright)',
             overflow: 'hidden',
@@ -287,7 +287,7 @@ function DashboardContent() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 24px', height: 56,
         borderBottom: '1px solid var(--border)',
-        background: 'rgba(7,9,14,0.9)',
+        background: 'var(--overlay-bg)',
         backdropFilter: 'blur(10px)',
         position: 'sticky', top: 0, zIndex: 40,
       }}>
@@ -428,3 +428,4 @@ export default function DashboardPage() {
     </Suspense>
   );
 }
+
