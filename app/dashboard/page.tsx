@@ -29,6 +29,7 @@ interface Trend {
   is_text_post?: boolean;
   author?: string;
   flair?: string;
+  upvote_ratio?: number;
   // Twitter enrichment
   tweets?: Tweet[];
   twitterError?: boolean;
@@ -124,7 +125,6 @@ function TrendCard({ trend, index, isSelected, onClick }: {
       {/* Stats row */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Upvote arrow */}
           <svg width="12" height="12" viewBox="0 0 24 24" fill={isHot ? 'var(--hot)' : 'var(--accent)'}>
             <path d="M12 4l8 8h-5v8H9v-8H4z"/>
           </svg>
@@ -213,8 +213,6 @@ function DashboardContent() {
     setLoading(true);
     setError(null);
     try {
-      const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
-
       // Step 1: Ask Claude which subreddits match this niche
       const nicheRes = await fetch('/api/analyze-niche', {
         method: 'POST',
@@ -226,9 +224,9 @@ function DashboardContent() {
 
       const subreddits: string[] = nicheData.subreddits || ['entrepreneur', 'productivity'];
 
-      // Step 2: Fetch hot posts from those subreddits via backend
+      // Step 2: Fetch hot posts via Next.js proxy route
       const redditRes = await fetch(
-        `${BACKEND}/trends/reddit?subreddits=${subreddits.join(',')}&limit=25`,
+        `/api/reddit-for-trend?subreddits=${subreddits.join(',')}&limit=25`,
         { signal: AbortSignal.timeout(20000) }
       );
       const redditData = await redditRes.json();
@@ -243,12 +241,12 @@ function DashboardContent() {
         top10.map(async (post: Trend) => {
           try {
             const twitterRes = await fetch(
-              `${BACKEND}/trends/twitter/search?query=${encodeURIComponent(post.title || '')}&limit=5`,
+              `/api/twitter-for-trend?query=${encodeURIComponent(post.title || '')}&limit=5`,
               { signal: AbortSignal.timeout(6000) }
             );
             if (!twitterRes.ok) return { ...post, tweets: [], twitterError: true };
             const td = await twitterRes.json();
-            return { ...post, tweets: td.tweets?.slice(0, 5) || [] };
+            return { ...post, tweets: td.data?.tweets?.slice(0, 5) || [] };
           } catch {
             return { ...post, tweets: [], twitterError: true };
           }
