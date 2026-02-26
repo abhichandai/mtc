@@ -50,13 +50,20 @@ function isRedditPost(trend: Trend): boolean {
   return !!(trend.title && trend.subreddit);
 }
 
-export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose: () => void }) {
+export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrativesCached }: {
+  trend: Trend;
+  onClose: () => void;
+  cachedNarratives?: { narratives: Narrative[]; post_body: string; comment_count: number };
+  onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number }) => void;
+}) {
   const [copied, setCopied] = useState(false);
-  const [narrativesState, setNarrativesState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
-  const [narratives, setNarratives] = useState<Narrative[]>([]);
+  const [narrativesState, setNarrativesState] = useState<'idle' | 'loading' | 'done' | 'error'>(
+    cachedNarratives ? 'done' : 'idle'
+  );
+  const [narratives, setNarratives] = useState<Narrative[]>(cachedNarratives?.narratives || []);
   const [narrativeError, setNarrativeError] = useState('');
-  const [commentCount, setCommentCount] = useState(0);
-  const [postBody, setPostBody] = useState(trend.preview || '');
+  const [commentCount, setCommentCount] = useState(cachedNarratives?.comment_count || 0);
+  const [postBody, setPostBody] = useState(cachedNarratives?.post_body || trend.preview || '');
 
   const topic = getTopicName(trend);
   const isReddit = isRedditPost(trend);
@@ -65,13 +72,20 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
     : (trend.increase_percentage || trend.growth || 0) > 500;
 
   useEffect(() => {
-    setNarrativesState('idle');
-    setNarratives([]);
-    setPostBody(trend.preview || '');
+    if (cachedNarratives) {
+      setNarrativesState('done');
+      setNarratives(cachedNarratives.narratives);
+      setPostBody(cachedNarratives.post_body || trend.preview || '');
+      setCommentCount(cachedNarratives.comment_count);
+    } else {
+      setNarrativesState('idle');
+      setNarratives([]);
+      setPostBody(trend.preview || '');
+    }
     const handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [trend, onClose]);
+  }, [trend, onClose, cachedNarratives]);
 
   const fetchNarratives = async () => {
     if (!trend.url || narrativesState === 'loading') return;
@@ -88,6 +102,14 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
       setCommentCount(data.comment_count || 0);
       if (data.post_body) setPostBody(data.post_body);
       setNarrativesState('done');
+      // Save to parent cache so reopening this card doesn't regenerate
+      if (trend.url && onNarrativesCached) {
+        onNarrativesCached(trend.url, {
+          narratives: data.narratives || [],
+          post_body: data.post_body || '',
+          comment_count: data.comment_count || 0,
+        });
+      }
     } catch (e) {
       setNarrativeError(e instanceof Error ? e.message : 'Something went wrong');
       setNarrativesState('error');
@@ -201,7 +223,11 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
               )}
             </div>
             {narrativesState === 'done' && (
-              <button onClick={() => { setNarrativesState('idle'); setNarratives([]); }}
+              <button onClick={() => {
+                if (trend.url && onNarrativesCached) onNarrativesCached(trend.url, { narratives: [], post_body: '', comment_count: 0 });
+                setNarrativesState('idle');
+                setNarratives([]);
+              }}
                 style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--text-dim)', cursor: 'pointer' }}>
                 Refresh
               </button>
