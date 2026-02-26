@@ -260,7 +260,7 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
                     <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 4, padding: '2px 7px', flexShrink: 0 }}>
                       #{i + 1}
                     </span>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-ui)', color: 'var(--text)', lineHeight: 1.3 }}>
                       {narrative.headline}
                     </span>
                   </div>
