@@ -462,7 +462,22 @@ function DashboardContent() {
       {selectedTrend && (
         <>
           <div className="panel-overlay" onClick={() => setSelectedTrend(null)} />
-          <div className="panel">
+          <div style={{
+            position: 'fixed',
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(680px, 95vw)',
+            maxHeight: '88vh',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            zIndex: 51,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.15)',
+            animation: 'modal-in 0.2s ease',
+          }}>
             <TrendDetail trend={selectedTrend} onClose={() => setSelectedTrend(null)} />
           </div>
         </>
@@ -484,4 +499,5 @@ export default function DashboardPage() {
     </Suspense>
   );
 }
+
 
