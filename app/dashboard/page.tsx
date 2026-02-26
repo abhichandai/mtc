@@ -467,7 +467,7 @@ function DashboardContent() {
             top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
             width: 'min(680px, 95vw)',
-            maxHeight: '88vh',
+            height: 'min(88vh, 860px)',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
             borderRadius: 16,
