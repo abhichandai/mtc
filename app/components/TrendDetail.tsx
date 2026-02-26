@@ -140,8 +140,8 @@ export default function TrendDetail({ trend, onClose }: { trend: Trend; onClose:
 
         {/* Title */}
         <h2 style={{
-          fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 400,
-          lineHeight: 1.25, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 20,
+          fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700,
+          lineHeight: 1.3, color: 'var(--text)', letterSpacing: '-0.01em', marginBottom: 20,
         }}>
           {topic}
         </h2>
