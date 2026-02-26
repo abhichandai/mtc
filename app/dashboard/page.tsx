@@ -4,6 +4,18 @@ import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TrendDetail from '../components/TrendDetail';
 
+// ─── TEST MODE ────────────────────────────────────────────────────────────────
+// Flip to false for production. When true:
+//   • Skips Claude analyze-niche call (uses hardcoded subreddits)
+//   • Fetches only 5 Reddit posts instead of 25
+//   • Shows only 3 trend cards
+//   • Skips all Twitter enrichment requests
+// ─────────────────────────────────────────────────────────────────────────────
+const TEST_MODE = true;
+const TEST_SUBREDDITS = ['entrepreneur', 'productivity'];
+const TEST_CARD_LIMIT = 3;
+const TEST_FETCH_LIMIT = 5;
+
 interface Tweet {
   id?: string;
   text?: string;
@@ -213,20 +225,30 @@ function DashboardContent() {
     setLoading(true);
     setError(null);
     try {
-      // Step 1: Ask Claude which subreddits match this niche
-      const nicheRes = await fetch('/api/analyze-niche', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords }),
-      });
-      const nicheData = await nicheRes.json();
-      if (!nicheRes.ok || !nicheData.success) throw new Error(nicheData.error || 'Failed to analyze niche');
+      let subreddits: string[];
+      let nicheDescription: string;
 
-      const subreddits: string[] = nicheData.subreddits || ['entrepreneur', 'productivity'];
+      if (TEST_MODE) {
+        // ── TEST MODE: skip Claude call, use hardcoded subreddits ──────────────
+        subreddits = TEST_SUBREDDITS;
+        nicheDescription = `[TEST] ${keywords.join(', ')}`;
+      } else {
+        // ── PROD: ask Claude which subreddits match this niche ─────────────────
+        const nicheRes = await fetch('/api/analyze-niche', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords }),
+        });
+        const nicheData = await nicheRes.json();
+        if (!nicheRes.ok || !nicheData.success) throw new Error(nicheData.error || 'Failed to analyze niche');
+        subreddits = nicheData.subreddits || ['entrepreneur', 'productivity'];
+        nicheDescription = nicheData.description || keywords.join(', ');
+      }
 
-      // Step 2: Fetch hot posts via Next.js proxy route
+      // ── Fetch Reddit posts ──────────────────────────────────────────────────
+      const fetchLimit = TEST_MODE ? TEST_FETCH_LIMIT : 25;
       const redditRes = await fetch(
-        `/api/reddit-for-trend?subreddits=${subreddits.join(',')}&limit=25`,
+        `/api/reddit-for-trend?subreddits=${subreddits.join(',')}&limit=${fetchLimit}`,
         { signal: AbortSignal.timeout(20000) }
       );
       const redditData = await redditRes.json();
@@ -235,33 +257,40 @@ function DashboardContent() {
         throw new Error('No posts returned from Reddit');
       }
 
-      // Step 3: Enrich top 10 posts with Twitter conversations
-      const top10 = redditData.posts.slice(0, 10);
-      const enriched = await Promise.allSettled(
-        top10.map(async (post: Trend) => {
-          try {
-            const twitterRes = await fetch(
-              `/api/twitter-for-trend?query=${encodeURIComponent(post.title || '')}&limit=5`,
-              { signal: AbortSignal.timeout(6000) }
-            );
-            if (!twitterRes.ok) return { ...post, tweets: [], twitterError: true };
-            const td = await twitterRes.json();
-            return { ...post, tweets: td.data?.tweets?.slice(0, 5) || [] };
-          } catch {
-            return { ...post, tweets: [], twitterError: true };
-          }
-        })
-      );
+      // ── Slice to card limit ────────────────────────────────────────────────
+      const cardLimit = TEST_MODE ? TEST_CARD_LIMIT : 10;
+      const topPosts = redditData.posts.slice(0, cardLimit);
 
-      const trends = enriched
-        .filter(r => r.status === 'fulfilled')
-        .map(r => (r as PromiseFulfilledResult<Trend>).value);
+      // ── Twitter enrichment (skipped in test mode) ──────────────────────────
+      let trends: Trend[];
+      if (TEST_MODE) {
+        trends = topPosts.map((post: Trend) => ({ ...post, tweets: [] }));
+      } else {
+        const enriched = await Promise.allSettled(
+          topPosts.map(async (post: Trend) => {
+            try {
+              const twitterRes = await fetch(
+                `/api/twitter-for-trend?query=${encodeURIComponent(post.title || '')}&limit=5`,
+                { signal: AbortSignal.timeout(6000) }
+              );
+              if (!twitterRes.ok) return { ...post, tweets: [], twitterError: true };
+              const td = await twitterRes.json();
+              return { ...post, tweets: td.data?.tweets?.slice(0, 5) || [] };
+            } catch {
+              return { ...post, tweets: [], twitterError: true };
+            }
+          })
+        );
+        trends = enriched
+          .filter(r => r.status === 'fulfilled')
+          .map(r => (r as PromiseFulfilledResult<Trend>).value);
+      }
 
       setResult({
         success: true,
         niche: {
           keywords,
-          description: nicheData.description || keywords.join(', '),
+          description: nicheDescription,
           subreddits,
         },
         trends,
@@ -319,6 +348,33 @@ function DashboardContent() {
       </header>
 
       <main style={{ flex: 1, padding: '24px', maxWidth: 1200, width: '100%', margin: '0 auto' }}>
+
+        {/* Test Mode Banner */}
+        {TEST_MODE && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'rgba(124, 92, 252, 0.08)',
+            border: '1px solid rgba(124, 92, 252, 0.25)',
+            borderRadius: 8,
+            padding: '8px 14px',
+            marginBottom: 20,
+            flexWrap: 'wrap',
+            gap: 8,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13 }}>🧪</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.04em' }}>
+                TEST MODE
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                · {TEST_CARD_LIMIT} cards · {TEST_FETCH_LIMIT} posts fetched · Claude + Twitter calls skipped
+              </span>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+              Set <code style={{ fontFamily: 'monospace', background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 3 }}>TEST_MODE = false</code> in dashboard/page.tsx for production
+            </span>
+          </div>
+        )}
 
         {/* Loading */}
         {loading && (
