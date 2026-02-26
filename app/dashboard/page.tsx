@@ -219,11 +219,18 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  // Cache narratives by post URL so they don't regenerate on every open
+  const [narrativesCache, setNarrativesCache] = useState<Record<string, {
+    narratives: Array<{headline: string; insight: string; angle: string}>;
+    post_body: string;
+    comment_count: number;
+  }>>({});
 
   const fetchTrends = useCallback(async () => {
     if (!keywords.length) { router.push('/'); return; }
     setLoading(true);
     setError(null);
+    setNarrativesCache({});
     try {
       let subreddits: string[];
       let nicheDescription: string;
@@ -478,7 +485,12 @@ function DashboardContent() {
             boxShadow: '0 24px 80px rgba(0,0,0,0.15)',
             animation: 'modal-in 0.2s ease',
           }}>
-            <TrendDetail trend={selectedTrend} onClose={() => setSelectedTrend(null)} />
+            <TrendDetail
+              trend={selectedTrend}
+              onClose={() => setSelectedTrend(null)}
+              cachedNarratives={selectedTrend.url ? narrativesCache[selectedTrend.url] : undefined}
+              onNarrativesCached={(url, data) => setNarrativesCache(prev => ({ ...prev, [url]: data }))}
+            />
           </div>
         </>
       )}
@@ -499,5 +511,6 @@ export default function DashboardPage() {
     </Suspense>
   );
 }
+
 
 
