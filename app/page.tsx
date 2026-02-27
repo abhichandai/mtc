@@ -93,9 +93,9 @@ export default function LandingPage() {
           letterSpacing: '-0.03em',
           color: 'var(--text)',
           marginBottom: 16,
-          maxWidth: 600,
+          maxWidth: 760,
         }}>
-          Create Content Your Audience<br />
+          Create Content Your Audience{' '}
           <span style={{ color: 'var(--accent)' }}>Wants to See</span>
         </h1>
 
@@ -103,14 +103,14 @@ export default function LandingPage() {
         <p style={{
           fontSize: 16, lineHeight: 1.6,
           color: 'var(--text-muted)',
-          maxWidth: 480, marginBottom: 36,
+          maxWidth: 520, marginBottom: 36,
           fontFamily: 'var(--font-ui)',
         }}>
-          Stop guessing what to post. Keep a finger on the pulse of your audience so you know exactly what content to create to serve them. Unlock the power of true Audience Intelligence for your brand.
+          Stop guessing what to post. Keep a finger on the pulse of your audience so you know exactly what content to create.
         </p>
 
         {/* Input group */}
-        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 520 }}>
+        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 640 }}>
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 0,
             background: 'var(--surface)',
@@ -177,13 +177,20 @@ export default function LandingPage() {
               </>
             ) : (
               <>
-                Show me my trends
+                Unlock Audience Intelligence
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
               </>
             )}
           </button>
+          <p style={{
+            textAlign: 'center', marginTop: 10,
+            fontSize: 12, color: 'var(--text-dim)',
+            fontFamily: 'var(--font-ui)',
+          }}>
+            Unlock the power of true Audience Intelligence for your brand.
+          </p>
         </form>
 
         {/* Examples */}
@@ -191,7 +198,7 @@ export default function LandingPage() {
           <span style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--font-ui)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Try an example
           </span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', maxWidth: 560 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', maxWidth: 640 }}>
             {EXAMPLES.map((ex, i) => (
               <button
                 key={i}
