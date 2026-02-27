@@ -3,9 +3,6 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// This endpoint ONLY does Claude niche analysis and returns subreddits.
-// Reddit fetching happens client-side in the browser (avoids server IP blocks).
-
 export async function POST(req: NextRequest) {
   try {
     const { keywords } = await req.json();
@@ -13,10 +10,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Keywords required' }, { status: 400 });
     }
 
-    const nicheString = keywords.filter(Boolean).join(', ');
+    // keywords[0] is now the full audience brief from the free-text input
+    const brief = keywords.filter(Boolean).join(' ');
 
     let subreddits: string[] = ['entrepreneur', 'productivity', 'SideProject'];
-    let description = nicheString;
+    let description = brief;
 
     try {
       const claudeResponse = await client.messages.create({
@@ -24,14 +22,19 @@ export async function POST(req: NextRequest) {
         max_tokens: 500,
         messages: [{
           role: 'user',
-          content: `You are helping a content creator find what their niche audience is talking about RIGHT NOW on Reddit.
+          content: `You are helping a content creator find what their target audience is talking about on Reddit RIGHT NOW.
 
-Their niche: "${nicheString}"
+Audience description: "${brief}"
+
+Pick 6-8 subreddits where THIS specific audience actually hangs out. Prefer niche, specific communities over massive generic ones. For example:
+- "indie makers building SaaS tools" → indiehackers, SideProject, microsaas, startups (not just r/entrepreneur)
+- "busy moms into meal prep" → MealPrepSunday, instantpot, EatCheapAndHealthy (not just r/food)
+- "personal finance creators focused on debt" → personalfinance, povertyfinance, debtfree, financialindependence
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "subreddits": ["6-8 real, active subreddit names (no r/ prefix). Pick the most specific communities for this niche. Examples for 'AI tools productivity solopreneurs': ChatGPT, SideProject, entrepreneur, productivity, artificial, OpenAI, nocode, startups"],
-  "description": "one sharp sentence describing this niche audience and what they care about"
+  "subreddits": ["6-8 subreddit names, no r/ prefix, most specific and relevant communities first"],
+  "description": "one sharp sentence describing this audience and what they care about"
 }`,
         }],
       });
