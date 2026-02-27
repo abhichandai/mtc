@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Montserrat:wght@400;500;600;700;800;900&family=Syne:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 /* ── Light mode (default) ─────────────────────────────────── */
@@ -9,8 +9,8 @@
   --border: #E2DFF0;
   --border-bright: #C8C3E0;
   --text: #1A1730;
-  --text-muted: #6E6882;
-  --text-dim: #B8B2CC;
+  --text-muted: #4A4560;
+  --text-dim: #8A85A0;
   --accent: #7C5CFC;
   --accent-glow: rgba(124, 92, 252, 0.14);
   --accent-dim: rgba(124, 92, 252, 0.09);
@@ -22,7 +22,7 @@
   --card-shadow: 0 8px 32px rgba(90, 70, 180, 0.08);
   --card-hover-shadow: 0 12px 40px rgba(90, 70, 180, 0.14);
   --font-display: 'Instrument Serif', Georgia, serif;
-  --font-ui: 'Syne', system-ui, sans-serif;
+  --font-ui: 'Montserrat', system-ui, sans-serif;
 }
 
 /* ── Dark mode ────────────────────────────────────────────── */
