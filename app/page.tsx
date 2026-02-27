@@ -95,18 +95,18 @@ export default function LandingPage() {
           marginBottom: 16,
           maxWidth: 600,
         }}>
-          Know what your audience<br />
-          <span style={{ color: 'var(--accent)' }}>is saying right now</span>
+          Create content your audience<br />
+          <span style={{ color: 'var(--accent)' }}>is already searching for</span>
         </h1>
 
         {/* Subheading */}
         <p style={{
           fontSize: 16, lineHeight: 1.6,
           color: 'var(--text-muted)',
-          maxWidth: 440, marginBottom: 36,
+          maxWidth: 480, marginBottom: 36,
           fontFamily: 'var(--font-ui)',
         }}>
-          Describe your target audience. We surface what they&apos;re actually talking about — and turn it into content angles.
+          Stop guessing what to post. See the exact conversations your niche is having right now — and the 3 narratives driving them — so you can create content that lands.
         </p>
 
         {/* Input group */}
