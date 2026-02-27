@@ -42,6 +42,15 @@ function timeAgo(created_utc?: number): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+function timeAgoMs(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
 function getTopicName(trend: Trend): string {
   return trend.title || trend.query || trend.topic || 'Unknown';
 }
@@ -53,8 +62,8 @@ function isRedditPost(trend: Trend): boolean {
 export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrativesCached }: {
   trend: Trend;
   onClose: () => void;
-  cachedNarratives?: { narratives: Narrative[]; post_body: string; comment_count: number };
-  onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number }) => void;
+  cachedNarratives?: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number };
+  onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number }) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [narrativesState, setNarrativesState] = useState<'idle' | 'loading' | 'done' | 'error'>(
@@ -64,6 +73,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   const [narrativeError, setNarrativeError] = useState('');
   const [commentCount, setCommentCount] = useState(cachedNarratives?.comment_count || 0);
   const [postBody, setPostBody] = useState(cachedNarratives?.post_body || trend.preview || '');
+  const [generatedAt, setGeneratedAt] = useState<number | null>(cachedNarratives?.generated_at || null);
 
   const topic = getTopicName(trend);
   const isReddit = isRedditPost(trend);
@@ -77,10 +87,12 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       setNarratives(cachedNarratives.narratives);
       setPostBody(cachedNarratives.post_body || trend.preview || '');
       setCommentCount(cachedNarratives.comment_count);
+      setGeneratedAt(cachedNarratives.generated_at || null);
     } else {
       setNarrativesState('idle');
       setNarratives([]);
       setPostBody(trend.preview || '');
+      setGeneratedAt(null);
     }
     const handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', handleEsc);
@@ -98,16 +110,18 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       );
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to generate narratives');
+      const now = Date.now();
       setNarratives(data.narratives || []);
       setCommentCount(data.comment_count || 0);
       if (data.post_body) setPostBody(data.post_body);
+      setGeneratedAt(now);
       setNarrativesState('done');
-      // Save to parent cache so reopening this card doesn't regenerate
       if (trend.url && onNarrativesCached) {
         onNarrativesCached(trend.url, {
           narratives: data.narratives || [],
           post_body: data.post_body || '',
           comment_count: data.comment_count || 0,
+          generated_at: now,
         });
       }
     } catch (e) {
@@ -219,7 +233,10 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
               <span style={{ fontSize: 16 }}>🧠</span>
               <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Top 3 Narratives</h3>
               {narrativesState === 'done' && commentCount > 0 && (
-                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>from {commentCount} comments</span>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                  from {commentCount} comments
+                  {generatedAt ? ` · generated ${timeAgoMs(generatedAt)}` : ''}
+                </span>
               )}
             </div>
             {narrativesState === 'done' && (
