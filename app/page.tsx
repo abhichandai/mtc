@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const EXAMPLES = [
-  'Indie makers building and selling SaaS tools',
+  'Entrepreneurs who want to grow a productive, profitable business',
   'Busy moms into meal prep and family health',
   'Personal finance creators focused on debt payoff',
 ];
@@ -80,7 +80,7 @@ export default function LandingPage() {
             display: 'inline-block',
           }} />
           <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', fontWeight: 500 }}>
-            Live Reddit intelligence
+            True Audience Intelligence
           </span>
         </div>
 
@@ -95,8 +95,8 @@ export default function LandingPage() {
           marginBottom: 16,
           maxWidth: 600,
         }}>
-          Create content your audience<br />
-          <span style={{ color: 'var(--accent)' }}>is already searching for</span>
+          Create Content Your Audience<br />
+          <span style={{ color: 'var(--accent)' }}>Wants to See</span>
         </h1>
 
         {/* Subheading */}
@@ -106,7 +106,7 @@ export default function LandingPage() {
           maxWidth: 480, marginBottom: 36,
           fontFamily: 'var(--font-ui)',
         }}>
-          Stop guessing what to post. See the exact conversations your niche is having right now — and the 3 narratives driving them — so you can create content that lands.
+          Stop guessing what to post. Keep a finger on the pulse of your audience so you know exactly what content to create to serve them. Unlock the power of true Audience Intelligence for your brand.
         </p>
 
         {/* Input group */}
