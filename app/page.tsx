@@ -63,7 +63,7 @@ export default function LandingPage() {
       <main style={{
         flex: 1, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        padding: '80px 24px 120px',
+        padding: '40px 24px 60px',
         textAlign: 'center',
       }}>
 
@@ -72,7 +72,7 @@ export default function LandingPage() {
           display: 'inline-flex', alignItems: 'center', gap: 6,
           background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 100, padding: '5px 14px',
-          marginBottom: 40,
+          marginBottom: 24,
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: '50%',
@@ -88,12 +88,12 @@ export default function LandingPage() {
         <h1 style={{
           fontFamily: 'var(--font-ui)',
           fontWeight: 800,
-          fontSize: 'clamp(42px, 6vw, 80px)',
-          lineHeight: 1.05,
+          fontSize: 'clamp(32px, 4vw, 52px)',
+          lineHeight: 1.1,
           letterSpacing: '-0.03em',
           color: 'var(--text)',
-          marginBottom: 24,
-          maxWidth: 760,
+          marginBottom: 16,
+          maxWidth: 600,
         }}>
           Know what your audience<br />
           <span style={{ color: 'var(--accent)' }}>is saying right now</span>
@@ -101,9 +101,9 @@ export default function LandingPage() {
 
         {/* Subheading */}
         <p style={{
-          fontSize: 18, lineHeight: 1.65,
+          fontSize: 16, lineHeight: 1.6,
           color: 'var(--text-muted)',
-          maxWidth: 480, marginBottom: 56,
+          maxWidth: 440, marginBottom: 36,
           fontFamily: 'var(--font-ui)',
         }}>
           Describe your target audience. We surface what they&apos;re actually talking about — and turn it into content angles.
@@ -229,8 +229,8 @@ export default function LandingPage() {
 
         {/* Social proof row */}
         <div style={{
-          marginTop: 72,
-          display: 'flex', gap: 48,
+          marginTop: 44,
+          display: 'flex', gap: 40,
           flexWrap: 'wrap', justifyContent: 'center',
         }}>
           {[
