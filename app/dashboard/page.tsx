@@ -211,8 +211,8 @@ function TrendCard({ trend, index, isSelected, onClick }: {
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const keywordsParam = searchParams.get('k') || '';
-  const keywords = keywordsParam.split(',').filter(Boolean);
+  const brief = searchParams.get('k') || '';
+  const keywords = [brief]; // single-element array for backward compat with API
 
   const [result, setResult] = useState<ApiResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -228,7 +228,7 @@ function DashboardContent() {
   }>>({});
 
   const fetchTrends = useCallback(async () => {
-    if (!keywords.length) { router.push('/'); return; }
+    if (!brief) { router.push('/'); return; }
     setLoading(true);
     setError(null);
     setNarrativesCache({});
@@ -239,7 +239,7 @@ function DashboardContent() {
       if (TEST_MODE) {
         // ── TEST MODE: skip Claude call, use hardcoded subreddits ──────────────
         subreddits = TEST_SUBREDDITS;
-        nicheDescription = `[TEST] ${keywords.join(', ')}`;
+        nicheDescription = `[TEST] ${brief}`;
       } else {
         // ── PROD: ask Claude which subreddits match this niche ─────────────────
         const nicheRes = await fetch('/api/analyze-niche', {
@@ -250,7 +250,7 @@ function DashboardContent() {
         const nicheData = await nicheRes.json();
         if (!nicheRes.ok || !nicheData.success) throw new Error(nicheData.error || 'Failed to analyze niche');
         subreddits = nicheData.subreddits || ['entrepreneur', 'productivity'];
-        nicheDescription = nicheData.description || keywords.join(', ');
+        nicheDescription = nicheData.description || brief;
       }
 
       // ── Fetch Reddit posts ──────────────────────────────────────────────────
@@ -311,11 +311,11 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }, [keywords.join(',')]);
+  }, [brief]);
 
   useEffect(() => { fetchTrends(); }, [fetchTrends]);
 
-  if (!keywords.length) return null;
+  if (!brief) return null;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -334,11 +334,9 @@ function DashboardContent() {
             <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', letterSpacing: '-0.01em' }}>MTC</span>
           </button>
           <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {keywords.map((kw, i) => (
-              <span key={i} className="tag tag-neutral" style={{ fontSize: 11 }}>{kw}</span>
-            ))}
-          </div>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {brief}
+          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {lastUpdated && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Updated {lastUpdated}</span>}
@@ -398,7 +396,7 @@ function DashboardContent() {
               <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <div className="live-dot" style={{ width: 10, height: 10 }} />
                 <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-                  Finding what <strong style={{ color: 'var(--accent)' }}>{keywordsParam}</strong> communities are talking about...
+                  Finding what <strong style={{ color: 'var(--accent)' }}>{brief}</strong> communities are talking about...
                 </p>
               </div>
             </div>
