@@ -241,7 +241,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             </div>
             {narrativesState === 'done' && (
               <button onClick={() => {
-                if (trend.url && onNarrativesCached) onNarrativesCached(trend.url, { narratives: [], post_body: '', comment_count: 0 });
+                if (trend.url && onNarrativesCached) onNarrativesCached(trend.url, { narratives: [], post_body: '', comment_count: 0, generated_at: 0 });
                 setNarrativesState('idle');
                 setNarratives([]);
               }}
