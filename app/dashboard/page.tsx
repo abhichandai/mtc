@@ -224,6 +224,7 @@ function DashboardContent() {
     narratives: Array<{headline: string; insight: string; angle: string}>;
     post_body: string;
     comment_count: number;
+    generated_at: number;
   }>>({});
 
   const fetchTrends = useCallback(async () => {
