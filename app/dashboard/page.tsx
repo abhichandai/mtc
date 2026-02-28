@@ -254,7 +254,7 @@ function DashboardContent() {
       }
 
       // ── Fetch Reddit posts ──────────────────────────────────────────────────
-      const fetchLimit = TEST_MODE ? TEST_FETCH_LIMIT : 25;
+      const fetchLimit = TEST_MODE ? TEST_FETCH_LIMIT : 15;
       const redditRes = await fetch(
         `/api/reddit-for-trend?subreddits=${subreddits.join(',')}&limit=${fetchLimit}`,
         { signal: AbortSignal.timeout(20000) }
@@ -266,7 +266,8 @@ function DashboardContent() {
       }
 
       // ── Slice to card limit ────────────────────────────────────────────────
-      const cardLimit = TEST_MODE ? TEST_CARD_LIMIT : 10;
+      const cardLimit = TEST_MODE ? TEST_CARD_LIMIT : 12;
+      // Soft cap: show up to 12, but fewer is fine if that's all we have
       const topPosts = redditData.posts.slice(0, cardLimit);
 
       // ── Twitter enrichment (skipped in test mode) ──────────────────────────
