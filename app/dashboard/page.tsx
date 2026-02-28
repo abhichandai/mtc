@@ -11,7 +11,7 @@ import TrendDetail from '../components/TrendDetail';
 //   • Shows only 3 trend cards
 //   • Skips all Twitter enrichment requests
 // ─────────────────────────────────────────────────────────────────────────────
-const TEST_MODE = true;
+const TEST_MODE = false;
 const TEST_SUBREDDITS = ['entrepreneur', 'productivity'];
 const TEST_CARD_LIMIT = 3;
 const TEST_FETCH_LIMIT = 5;
