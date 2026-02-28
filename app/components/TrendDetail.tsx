@@ -6,7 +6,7 @@ interface Tweet {
   id?: string; text?: string; author?: string;
   author_handle?: string; author_name?: string;
   likes?: number; retweets?: number; replies?: number;
-  created_at?: string; url?: string;
+  created_at?: string; url?: string; permalink?: string;
 }
 
 interface Narrative {
@@ -17,7 +17,7 @@ interface Narrative {
 
 interface Trend {
   title?: string; score?: number; num_comments?: number;
-  subreddit?: string; url?: string; author?: string;
+  subreddit?: string; url?: string; permalink?: string; author?: string;
   flair?: string; upvote_ratio?: number; preview?: string;
   created_utc?: number;
   query?: string; topic?: string; search_volume?: number;
@@ -100,12 +100,13 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   }, [trend, onClose, cachedNarratives]);
 
   const fetchNarratives = async () => {
-    if (!trend.url || narrativesState === 'loading') return;
+    const commentUrl = trend.permalink || trend.url;
+    if (!commentUrl || narrativesState === 'loading') return;
     setNarrativesState('loading');
     setNarrativeError('');
     try {
       const res = await fetch(
-        `/api/get-narratives?url=${encodeURIComponent(trend.url)}&title=${encodeURIComponent(trend.title || '')}`,
+        `/api/get-narratives?url=${encodeURIComponent(commentUrl)}&title=${encodeURIComponent(trend.title || '')}`,
         { signal: AbortSignal.timeout(30000) }
       );
       const data = await res.json();
@@ -116,8 +117,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       if (data.post_body) setPostBody(data.post_body);
       setGeneratedAt(now);
       setNarrativesState('done');
-      if (trend.url && onNarrativesCached) {
-        onNarrativesCached(trend.url, {
+      if (onNarrativesCached) {
+        onNarrativesCached(commentUrl, {
           narratives: data.narratives || [],
           post_body: data.post_body || '',
           comment_count: data.comment_count || 0,
@@ -241,7 +242,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             </div>
             {narrativesState === 'done' && (
               <button onClick={() => {
-                if (trend.url && onNarrativesCached) onNarrativesCached(trend.url, { narratives: [], post_body: '', comment_count: 0, generated_at: 0 });
+                if (onNarrativesCached) onNarrativesCached(commentUrl, { narratives: [], post_body: '', comment_count: 0, generated_at: 0 });
                 setNarrativesState('idle');
                 setNarratives([]);
               }}
