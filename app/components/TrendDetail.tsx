@@ -89,9 +89,12 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       setCommentCount(cachedNarratives.comment_count);
       setGeneratedAt(cachedNarratives.generated_at || null);
     } else {
-      setNarrativesState('idle');
-      setNarratives([]);
-      setPostBody(trend.preview || '');
+      // Don't reset if a fetch is in progress or errored — a parent re-render
+      // (e.g. Twitter enrichment coming in) creates a new trend object reference
+      // which would otherwise wipe out loading/error state mid-flight.
+      setNarrativesState(prev => (prev === 'loading' || prev === 'error') ? prev : 'idle');
+      setNarratives(prev => prev.length > 0 ? prev : []);
+      setPostBody(prev => prev || trend.preview || '');
       setGeneratedAt(null);
     }
     const handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
