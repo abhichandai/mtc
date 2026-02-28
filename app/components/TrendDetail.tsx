@@ -99,8 +99,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     return () => window.removeEventListener('keydown', handleEsc);
   }, [trend, onClose, cachedNarratives]);
 
+  const commentUrl = trend.permalink || trend.url;
   const fetchNarratives = async () => {
-    const commentUrl = trend.permalink || trend.url;
     if (!commentUrl || narrativesState === 'loading') return;
     setNarrativesState('loading');
     setNarrativeError('');
