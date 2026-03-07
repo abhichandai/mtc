@@ -38,6 +38,7 @@ interface Trend {
   engagement?: number;
   subreddit?: string;
   url?: string;
+  permalink?: string;
   is_text_post?: boolean;
   author?: string;
   flair?: string;
@@ -218,6 +219,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
+  const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   // Cache narratives by post URL so they don't regenerate on every open
   const [narrativesCache, setNarrativesCache] = useState<Record<string, {
@@ -467,8 +469,8 @@ function DashboardContent() {
           }}>
             <TrendDetail
               trend={selectedTrend}
-              onClose={() => setSelectedTrend(null)}
-              cachedNarratives={selectedTrend.url ? narrativesCache[selectedTrend.url] : undefined}
+              onClose={handleClosePanel}
+              cachedNarratives={narrativesCache[selectedTrend.permalink || selectedTrend.url || '']}
               onNarrativesCached={(url, data) => setNarrativesCache(prev => ({ ...prev, [url]: data }))}
             />
           </div>
