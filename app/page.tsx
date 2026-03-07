@@ -26,8 +26,9 @@ export default function LandingPage() {
     if (isSignedIn) {
       router.push(dashboardUrl);
     } else {
-      // Pass the destination as redirect_url so Clerk returns here after auth
-      router.push(`/sign-up?redirect_url=${encodeURIComponent(dashboardUrl)}`);
+      // Send new users to onboarding with the brief pre-filled, then on to dashboard
+      const onboardingUrl = `/onboarding?${new URLSearchParams({ k: brief.trim() })}`;
+      router.push(`/sign-up?redirect_url=${encodeURIComponent(onboardingUrl)}`);
     }
   };
 
