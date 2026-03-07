@@ -253,7 +253,7 @@ function TrendCard({ trend, index, isSelected, onClick }: {
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const brief = searchParams.get('k') || '';
+  const [brief, setBrief] = useState<string>(searchParams.get('k') || '');
   const keywords = [brief]; // single-element array for backward compat with API
 
   const [result, setResult] = useState<ApiResult | null>(null);
@@ -271,8 +271,24 @@ function DashboardContent() {
     generated_at: number;
   }>>({});
 
+  // If no brief in URL, load from profile
+  useEffect(() => {
+    if (brief) return;
+    fetch('/api/profile')
+      .then(r => r.json())
+      .then(data => {
+        const profileBrief = data.profile?.audience_brief;
+        if (profileBrief) {
+          setBrief(profileBrief);
+        } else {
+          router.push('/');
+        }
+      })
+      .catch(() => router.push('/'));
+  }, [brief, router]);
+
   const fetchTrends = useCallback(async (forceRefresh = false) => {
-    if (!brief) { router.push('/'); return; }
+    if (!brief) return;
 
     // ── Check cache first (unless forced refresh) ──────────────────────────
     if (!forceRefresh) {
@@ -348,7 +364,13 @@ function DashboardContent() {
 
   useEffect(() => { fetchTrends(false); }, [fetchTrends]);
 
-  if (!brief) return null;
+  if (!brief) return (
+    <AppShell>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ width: 28, height: 28, border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+      </div>
+    </AppShell>
+  );
 
   return (
     <AppShell>
