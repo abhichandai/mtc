@@ -341,10 +341,15 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                         {narrative.insight}
                       </p>
 
-                      {/* Signal — why this narrative was identified */}
+                      {/* Why it matters */}
                       {narrative.signal && (
-                        <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 12, paddingLeft: 10, borderLeft: '2px solid var(--border-bright)' }}>
-                          {narrative.signal}
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 5 }}>
+                            Why it matters
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.6, paddingLeft: 10, borderLeft: '2px solid var(--border-bright)' }}>
+                            {narrative.signal}
+                          </div>
                         </div>
                       )}
 

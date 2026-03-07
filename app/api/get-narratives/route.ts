@@ -87,11 +87,11 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
       "type": "consensus" | "contested" | "contrarian",
       "headline": "5-8 word punchy headline",
       "insight": "2-3 sentences: what people are saying, why it matters, what tension or agreement exists",
-      "signal": "1-2 sentences explaining WHY you identified this as a narrative — what pattern in the discussion stood out. Plain language, no comment numbers.",
+      "signal": "1-2 sentences written like a senior analyst's note — explain what the community is doing or feeling that made this narrative stand out. Write about people and their views, not about data points. No mention of comment counts, scores, or recency. Example tone: 'The community keeps returning to this because it resolves an anxiety most people here share' not 'Multiple high-scored comments indicate...'.",
       "content_ideas": [
-        "Direction 1 — a broad creative angle the creator can take on this narrative in their own style",
-        "Direction 2 — a different format or perspective on the same narrative",
-        "Direction 3 — a third distinct approach, perhaps more niche or counterintuitive"
+        "Idea 1 — an educational or explainer angle on this narrative (teach something the community understands that most people outside it don't)",
+        "Idea 2 — a story, documentary, or personal experience angle (show it through a real example, case study, or lived journey)",
+        "Idea 3 — a debate, hot take, or contrarian challenge angle (pick a side, make a bold claim, or challenge a widely held belief related to this narrative)"
       ]
     }
   ],
