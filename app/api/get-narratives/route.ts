@@ -169,8 +169,7 @@ export async function GET(req: NextRequest) {
         const ageHours = c.created_utc ? Math.round((now - c.created_utc) / 3600) : 0;
         const depthLabel = c.depth === 0 ? 'top-level' : `reply (depth ${c.depth})`;
         const controversial = c.controversiality === 1 ? ' [CONTROVERSIAL]' : '';
-        const body = c.body.length > 400 ? c.body.slice(0, 400) + "..." : c.body;
-        return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${ageHours}h ago${controversial}\n${body}`;
+return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${ageHours}h ago${controversial}\n${c.body}`;
       })
       .join('\n\n---\n\n');
 
