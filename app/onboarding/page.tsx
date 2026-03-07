@@ -8,6 +8,7 @@ const PLATFORMS = [
   { id: 'youtube', label: 'YouTube' },
   { id: 'tiktok', label: 'TikTok' },
   { id: 'instagram', label: 'Instagram' },
+  { id: 'facebook', label: 'Facebook' },
   { id: 'linkedin', label: 'LinkedIn' },
   { id: 'podcast', label: 'Podcast' },
   { id: 'newsletter', label: 'Newsletter' },
@@ -22,7 +23,17 @@ const STYLES = [
   { id: 'documentary', label: 'Documentary' },
   { id: 'tutorials', label: 'Tutorials' },
   { id: 'trends', label: 'Trends & commentary' },
+  { id: 'reaction', label: 'Reaction & commentary' },
+  { id: 'vlog', label: 'Day in the life / Vlog' },
+  { id: 'challenge', label: 'Challenge / Experiment' },
+  { id: 'case_study', label: 'Case study / Deep dive' },
+  { id: 'review', label: 'Review & comparison' },
+  { id: 'satire', label: 'Satire / Comedy' },
+  { id: 'qa', label: 'Q&A / AMA' },
+  { id: 'listicle', label: 'List / Roundup' },
 ];
+
+const MAX_STYLES = 3;
 
 function OnboardingContent() {
   const router = useRouter();
@@ -70,9 +81,11 @@ function OnboardingContent() {
   };
 
   const toggleStyle = (id: string) => {
-    setStyles(prev =>
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
-    );
+    setStyles(prev => {
+      if (prev.includes(id)) return prev.filter(s => s !== id);
+      if (prev.length >= MAX_STYLES) return prev;
+      return [...prev, id];
+    });
   };
 
   const handleComplete = async () => {
@@ -260,13 +273,15 @@ function OnboardingContent() {
 
               {/* Platform */}
               <div style={{ marginBottom: 28 }}>
-                <p style={{
-                  fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
-                  textTransform: 'uppercase', color: 'var(--text-dim)',
-                  fontFamily: 'var(--font-ui)', marginBottom: 12,
-                }}>
-                  Platform
-                </p>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+                  <p style={{
+                    fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
+                    textTransform: 'uppercase', color: 'var(--text-dim)',
+                    fontFamily: 'var(--font-ui)', margin: 0,
+                  }}>
+                    What platforms do you create content on?
+                  </p>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {PLATFORMS.map(p => {
                     const active = platforms.includes(p.id);
@@ -295,16 +310,27 @@ function OnboardingContent() {
 
               {/* Style */}
               <div style={{ marginBottom: 32 }}>
-                <p style={{
-                  fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
-                  textTransform: 'uppercase', color: 'var(--text-dim)',
-                  fontFamily: 'var(--font-ui)', marginBottom: 12,
-                }}>
-                  Style
-                </p>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <p style={{
+                    fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
+                    textTransform: 'uppercase', color: 'var(--text-dim)',
+                    fontFamily: 'var(--font-ui)', margin: 0,
+                  }}>
+                    Pick your top 3 content styles
+                  </p>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700,
+                    color: styles.length === MAX_STYLES ? 'var(--accent)' : 'var(--text-dim)',
+                    fontFamily: 'var(--font-ui)',
+                    transition: 'color 0.2s',
+                  }}>
+                    {styles.length} / {MAX_STYLES}
+                  </span>
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {STYLES.map(s => {
                     const active = styles.includes(s.id);
+                    const maxed = styles.length >= MAX_STYLES && !active;
                     return (
                       <button
                         key={s.id}
@@ -314,10 +340,11 @@ function OnboardingContent() {
                           borderRadius: 100,
                           border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
                           background: active ? 'var(--accent-dim)' : 'var(--surface)',
-                          color: active ? 'var(--accent)' : 'var(--text-muted)',
+                          color: active ? 'var(--accent)' : maxed ? 'var(--text-dim)' : 'var(--text-muted)',
                           fontFamily: 'var(--font-ui)',
                           fontSize: 14, fontWeight: active ? 700 : 500,
-                          cursor: 'pointer',
+                          cursor: maxed ? 'not-allowed' : 'pointer',
+                          opacity: maxed ? 0.45 : 1,
                           transition: 'all 0.15s',
                         }}
                       >
