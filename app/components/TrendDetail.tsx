@@ -124,7 +124,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     try {
       const res = await fetch(
         `/api/get-narratives?url=${encodeURIComponent(commentUrl)}&title=${encodeURIComponent(trend.title || '')}`,
-        { signal: AbortSignal.timeout(30000) }
+        { signal: AbortSignal.timeout(45000) }
       );
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to generate narratives');
