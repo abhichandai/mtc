@@ -28,15 +28,39 @@ const STYLE_LABELS: Record<string, string> = {
 function buildCreatorContext(platforms: string[], styles: string[], brief: string): string {
   const platformStr = platforms.length
     ? platforms.map(p => PLATFORM_LABELS[p] || p).join(', ')
-    : 'unspecified platform';
-  const styleStr = styles.length
-    ? styles.map(s => STYLE_LABELS[s] || s).join(', ')
     : null;
-  let ctx = `CREATOR CONTEXT:\nThis creator makes content for: ${platformStr}.\nTheir audience: ${brief || 'general audience'}.`;
-  if (styleStr) {
-    ctx += `\nTheir content style(s): ${styleStr}.`;
-    ctx += `\n\nIMPORTANT: The 3 content ideas for each narrative MUST be tailored to these specific formats — ${styleStr}. Do not use generic Educational/Story/Debate labels. Instead, frame each idea as this specific creator would execute it on ${platformStr}. A YouTube tutorial idea looks different from a LinkedIn post idea. Make it feel personal and immediately actionable for THEM.`;
+  const styleLabels = styles.length
+    ? styles.map(s => STYLE_LABELS[s] || s)
+    : null;
+  const styleStr = styleLabels ? styleLabels.join(', ') : null;
+  const ideaCount = styles.length || 3;
+
+  let ctx = `CREATOR CONTEXT:`;
+  ctx += `\nAudience: ${brief || 'general audience'}.`;
+  if (platformStr) ctx += `\nPlatform(s): ${platformStr}.`;
+  if (styleStr) ctx += `\nContent style(s): ${styleStr}.`;
+
+  ctx += `\n\nCONTENT IDEAS INSTRUCTIONS:`;
+  ctx += `\nGenerate exactly ${ideaCount} content idea(s) per narrative — one per style listed above.`;
+
+  if (styleLabels && styleLabels.length > 0) {
+    ctx += `\nEach idea must be labelled with its style and specifically framed for how this creator executes that format.`;
+    styleLabels.forEach(style => {
+      ctx += `\n- "${style}" idea: write it as a concrete ${style.toLowerCase()} piece${platformStr ? ` for ${platformStr}` : ''}.`;
+    });
   }
+
+  if (platformStr && platforms.length >= 2) {
+    const eg1 = PLATFORM_LABELS[platforms[0]] || platforms[0];
+    const eg2 = PLATFORM_LABELS[platforms[1]] || platforms[1];
+    ctx += `\nRemember: the same topic looks very different on ${eg1} vs ${eg2} — tailor the framing, length, and hook accordingly.`;
+  } else if (platformStr) {
+    ctx += `\nTailor the framing, hook, and format specifically for ${platformStr}.`;
+  }
+
+  ctx += `\nDo NOT use generic "Educational/Story/Debate" labels. Use the creator's actual style names as listed above.`;
+  ctx += `\nMake every idea immediately actionable — the creator should be able to start executing it today.`;
+
   return ctx;
 }
 
@@ -144,9 +168,7 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
       "insight": "2-3 sentences: what people are saying, why it matters, what tension or agreement exists",
       "signal": "1-2 sentences written like a senior analyst's note — explain what the community is doing or feeling that made this narrative stand out. Write about people and their views, not about data points. No mention of comment counts, scores, or recency. Example tone: 'The community keeps returning to this because it resolves an anxiety most people here share' not 'Multiple high-scored comments indicate...'.",
       "content_ideas": [
-        "Idea 1 — an educational or explainer angle on this narrative (teach something the community understands that most people outside it don't)",
-        "Idea 2 — a story, documentary, or personal experience angle (show it through a real example, case study, or lived journey)",
-        "Idea 3 — a debate, hot take, or contrarian challenge angle (pick a side, make a bold claim, or challenge a widely held belief related to this narrative)"
+        "One idea per creator style selected — labelled with the style name, framed for their platform(s). Array length must match the number of styles in the CREATOR CONTEXT."
       ]
     }
   ],
