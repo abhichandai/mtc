@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TrendDetail from '../components/TrendDetail';
+import AppShell from '../components/AppShell';
 
 // ─── TEST MODE ────────────────────────────────────────────────────────────────
 // Flip to false for production. When true:
@@ -350,6 +351,7 @@ function DashboardContent() {
   if (!brief) return null;
 
   return (
+    <AppShell>
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <header style={{
@@ -360,13 +362,9 @@ function DashboardContent() {
         backdropFilter: 'blur(10px)',
         position: 'sticky', top: 0, zIndex: 40,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div className="live-dot" />
-            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', letterSpacing: '-0.01em' }}>MTC</span>
-          </button>
-          <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-          <span style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="live-dot" />
+          <span style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {brief}
           </span>
         </div>
@@ -532,6 +530,7 @@ function DashboardContent() {
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+    </AppShell>
   );
 }
 

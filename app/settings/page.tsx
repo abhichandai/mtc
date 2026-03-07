@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AppShell from '../components/AppShell';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 
@@ -129,36 +130,8 @@ export default function SettingsPage() {
   }
 
   return (
+    <AppShell>
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-
-      {/* Nav */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 48px', height: 64,
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--bg)',
-        position: 'sticky', top: 0, zIndex: 10,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-glow)' }} />
-          <span style={{ fontFamily: 'var(--font-ui)', fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em', color: 'var(--text)' }}>
-            MakeThisContent
-          </span>
-        </div>
-        <button
-          onClick={() => router.push('/dashboard')}
-          style={{
-            background: 'none', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '6px 14px',
-            fontSize: 13, fontWeight: 600,
-            color: 'var(--text-muted)', cursor: 'pointer',
-            fontFamily: 'var(--font-ui)',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          ← Dashboard
-        </button>
-      </nav>
 
       {/* Content */}
       <main style={{ maxWidth: 640, margin: '0 auto', padding: '48px 24px 80px' }}>
@@ -360,5 +333,6 @@ export default function SettingsPage() {
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+    </AppShell>
   );
 }
