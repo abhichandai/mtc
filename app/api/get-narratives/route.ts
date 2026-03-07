@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
     // Fetch full comment tree from backend (now returns recursively flattened tree)
     const commentsRes = await fetch(
       `${BACKEND_URL}/trends/reddit/comments?url=${encodeURIComponent(postUrl)}`,
-      { signal: AbortSignal.timeout(20000) }
+      { signal: AbortSignal.timeout(30000) }
     );
     const commentsData = await commentsRes.json();
 
@@ -169,7 +169,8 @@ export async function GET(req: NextRequest) {
         const ageHours = c.created_utc ? Math.round((now - c.created_utc) / 3600) : 0;
         const depthLabel = c.depth === 0 ? 'top-level' : `reply (depth ${c.depth})`;
         const controversial = c.controversiality === 1 ? ' [CONTROVERSIAL]' : '';
-        return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${ageHours}h ago${controversial}\n${c.body}`;
+        const body = c.body.length > 400 ? c.body.slice(0, 400) + "..." : c.body;
+        return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${ageHours}h ago${controversial}\n${body}`;
       })
       .join('\n\n---\n\n');
 
