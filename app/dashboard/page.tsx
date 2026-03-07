@@ -447,7 +447,7 @@ function DashboardContent() {
               Couldn&apos;t load trends
             </h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: 14 }}>{error}</p>
-            <button className="btn-primary" onClick={fetchTrends} style={{ margin: '0 auto' }}>
+            <button className="btn-primary" onClick={() => fetchTrends(true)} style={{ margin: '0 auto' }}>
               Try again
             </button>
           </div>
