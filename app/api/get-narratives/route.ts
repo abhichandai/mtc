@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
+// Raise Vercel function timeout to 60s (max on Hobby plan with Fluid Compute)
+export const maxDuration = 60;
+
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
 
@@ -59,26 +62,14 @@ export async function GET(req: NextRequest) {
     const postBody = commentsData.post_body || '';
     const now = Math.floor(Date.now() / 1000);
 
-    // Score comments by a recency-weighted signal: score * recency_factor
-    // Recent comments (< 24h) get full weight, older ones decay gently
-    const scored = commentsData.comments.map((c: Comment) => {
-      const ageHours = c.created_utc ? (now - c.created_utc) / 3600 : 168;
-      const recencyFactor = ageHours < 24 ? 1.0 : ageHours < 72 ? 0.8 : 0.6;
-      const controversyBonus = c.controversiality === 1 ? 1.3 : 1.0;
-      return { ...c, _signal: (c.score + 1) * recencyFactor * controversyBonus, _ageHours: Math.round(ageHours) };
-    });
-
-    // Take top 80 by signal score — enough for full topology without timeout risk
-    const topComments = scored
-      .sort((a: Comment & {_signal: number}, b: Comment & {_signal: number}) => b._signal - a._signal)
-      .slice(0, 80);
-
-    // Format with full metadata for Sonnet
-    const allComments = topComments
-      .map((c: Comment & {_ageHours: number}, i: number) => {
+    // Send all comments with recency-weighted metadata — no cap
+    // maxDuration = 60 gives Sonnet enough time to analyse the full corpus
+    const allComments = commentsData.comments
+      .map((c: Comment, i: number) => {
+        const ageHours = c.created_utc ? Math.round((now - c.created_utc) / 3600) : 0;
         const depthLabel = c.depth === 0 ? 'top-level' : `reply (depth ${c.depth})`;
         const controversial = c.controversiality === 1 ? ' [CONTROVERSIAL]' : '';
-        return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${c._ageHours}h ago${controversial}\n${c.body}`;
+        return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${ageHours}h ago${controversial}\n${c.body}`;
       })
       .join('\n\n---\n\n');
 
@@ -123,8 +114,7 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
       narratives: parsed.narratives || [],
       thread_type: parsed.thread_type || 'mixed',
       missing_narratives: parsed.missing_narratives || null,
-      comment_count: topComments.length,
-      total_comments: commentsData.count,
+      comment_count: commentsData.count,
       post_body: postBody,
     });
 
