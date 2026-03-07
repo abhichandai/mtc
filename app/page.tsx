@@ -60,12 +60,51 @@ export default function LandingPage() {
             MakeThisContent
           </span>
         </div>
-        <span style={{
-          fontSize: 12, color: 'var(--text-dim)',
-          fontFamily: 'var(--font-ui)',
-        }}>
-          Beta
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{
+            fontSize: 12, color: 'var(--text-dim)',
+            fontFamily: 'var(--font-ui)',
+          }}>
+            Beta
+          </span>
+          {isSignedIn ? (
+            <button
+              onClick={() => router.push('/dashboard')}
+              style={{
+                background: 'var(--accent)', color: '#fff',
+                border: 'none', borderRadius: 8,
+                padding: '7px 16px', fontSize: 13, fontWeight: 700,
+                fontFamily: 'var(--font-ui)', cursor: 'pointer',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              Go to dashboard →
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push('/sign-in?redirect_url=/dashboard')}
+              style={{
+                background: 'none',
+                border: '1px solid var(--border)',
+                borderRadius: 8, padding: '7px 16px',
+                fontSize: 13, fontWeight: 600,
+                color: 'var(--text-muted)', cursor: 'pointer',
+                fontFamily: 'var(--font-ui)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
+                (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
+              }}
+            >
+              Sign in
+            </button>
+          )}
+        </div>
       </nav>
 
       {/* Hero */}
