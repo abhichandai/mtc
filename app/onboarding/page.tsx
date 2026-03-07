@@ -4,15 +4,30 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 
-const PLATFORMS = [
-  { id: 'youtube', label: 'YouTube' },
-  { id: 'tiktok', label: 'TikTok' },
-  { id: 'instagram', label: 'Instagram' },
-  { id: 'facebook', label: 'Facebook' },
-  { id: 'linkedin', label: 'LinkedIn' },
-  { id: 'podcast', label: 'Podcast' },
-  { id: 'newsletter', label: 'Newsletter' },
-  { id: 'blog', label: 'Blog' },
+const PLATFORM_BY_FORMAT: Record<string, { id: string; label: string }[]> = {
+  long_form: [
+    { id: 'youtube', label: 'YouTube' },
+    { id: 'podcast', label: 'Podcast' },
+    { id: 'blog', label: 'Blog' },
+  ],
+  short_form: [
+    { id: 'youtube', label: 'YouTube' },
+    { id: 'tiktok', label: 'TikTok' },
+    { id: 'instagram', label: 'Instagram' },
+    { id: 'facebook', label: 'Facebook' },
+  ],
+  text: [
+    { id: 'newsletter', label: 'Newsletter' },
+    { id: 'linkedin', label: 'LinkedIn' },
+    { id: 'blog', label: 'Blog' },
+    { id: 'facebook', label: 'Facebook' },
+  ],
+};
+
+const EXAMPLES = [
+  'Indie makers building and selling SaaS tools',
+  'Personal finance beginners trying to get out of debt',
+  'Entrepreneurs who want to grow a productive, profitable business',
 ];
 
 const STYLES = [
@@ -85,6 +100,13 @@ function OnboardingContent() {
     setPlatforms(prev =>
       prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
     );
+  };
+
+  const selectFormat = (id: string) => {
+    setContentFormat(id);
+    // Clear any platforms that aren't valid for the new format
+    const validIds = PLATFORM_BY_FORMAT[id]?.map(p => p.id) ?? [];
+    setPlatforms(prev => prev.filter(p => validIds.includes(p)));
   };
 
   const toggleStyle = (id: string) => {
@@ -233,6 +255,29 @@ function OnboardingContent() {
                 />
               </div>
 
+              {/* Example pills */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                {EXAMPLES.map(ex => (
+                  <button
+                    key={ex}
+                    onClick={() => setBrief(ex)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: 100,
+                      border: '1.5px solid var(--border)',
+                      background: brief === ex ? 'var(--accent-dim)' : 'var(--surface)',
+                      color: brief === ex ? 'var(--accent)' : 'var(--text-muted)',
+                      fontFamily: 'var(--font-ui)',
+                      fontSize: 13, fontWeight: brief === ex ? 700 : 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+
               <button
                 onClick={() => setStep(2)}
                 disabled={brief.trim().length < 3}
@@ -279,44 +324,7 @@ function OnboardingContent() {
                 This personalises the content ideas the AI generates for you.
               </p>
 
-              {/* Platform */}
-              <div style={{ marginBottom: 28 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-                  <p style={{
-                    fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
-                    textTransform: 'uppercase', color: 'var(--text-dim)',
-                    fontFamily: 'var(--font-ui)', margin: 0,
-                  }}>
-                    What platforms do you create content on?
-                  </p>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {PLATFORMS.map(p => {
-                    const active = platforms.includes(p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => togglePlatform(p.id)}
-                        style={{
-                          padding: '8px 16px',
-                          borderRadius: 100,
-                          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                          background: active ? 'var(--accent-dim)' : 'var(--surface)',
-                          color: active ? 'var(--accent)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-ui)',
-                          fontSize: 14, fontWeight: active ? 700 : 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {p.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Content Format */}
+              {/* Content Format — first */}
               <div style={{ marginBottom: 28 }}>
                 <div style={{ marginBottom: 12 }}>
                   <p style={{
@@ -333,7 +341,7 @@ function OnboardingContent() {
                     return (
                       <button
                         key={f.id}
-                        onClick={() => setContentFormat(f.id)}
+                        onClick={() => selectFormat(f.id)}
                         style={{
                           padding: '12px 16px',
                           borderRadius: 10,
@@ -358,52 +366,98 @@ function OnboardingContent() {
                 </div>
               </div>
 
-              {/* Style */}
-              <div style={{ marginBottom: 32 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <p style={{
-                    fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
-                    textTransform: 'uppercase', color: 'var(--text-dim)',
-                    fontFamily: 'var(--font-ui)', margin: 0,
-                  }}>
-                    Pick your top 3 content styles
-                  </p>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700,
-                    color: styles.length === MAX_STYLES ? 'var(--accent)' : 'var(--text-dim)',
-                    fontFamily: 'var(--font-ui)',
-                    transition: 'color 0.2s',
-                  }}>
-                    {styles.length} / {MAX_STYLES}
-                  </span>
+              {/* Platform — filtered by format, only shown once format is selected */}
+              {contentFormat && (
+                <div style={{ marginBottom: 28, animation: 'fade-up 0.25s ease both' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+                    <p style={{
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
+                      textTransform: 'uppercase', color: 'var(--text-dim)',
+                      fontFamily: 'var(--font-ui)', margin: 0,
+                    }}>
+                      Which platform(s)?
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {(PLATFORM_BY_FORMAT[contentFormat] ?? []).map(p => {
+                      const active = platforms.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => togglePlatform(p.id)}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: 100,
+                            border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                            background: active ? 'var(--accent-dim)' : 'var(--surface)',
+                            color: active ? 'var(--accent)' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-ui)',
+                            fontSize: 14, fontWeight: active ? 700 : 500,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {STYLES.map(s => {
-                    const active = styles.includes(s.id);
-                    const maxed = styles.length >= MAX_STYLES && !active;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => toggleStyle(s.id)}
-                        style={{
-                          padding: '8px 16px',
-                          borderRadius: 100,
-                          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                          background: active ? 'var(--accent-dim)' : 'var(--surface)',
-                          color: active ? 'var(--accent)' : maxed ? 'var(--text-dim)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-ui)',
-                          fontSize: 14, fontWeight: active ? 700 : 500,
-                          cursor: maxed ? 'not-allowed' : 'pointer',
-                          opacity: maxed ? 0.45 : 1,
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {s.label}
-                      </button>
-                    );
-                  })}
+              )}
+
+              {/* Style — min 1, max 3, only shown once platform selected */}
+              {platforms.length > 0 && (
+                <div style={{ marginBottom: 32, animation: 'fade-up 0.25s ease both' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <p style={{
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
+                      textTransform: 'uppercase', color: 'var(--text-dim)',
+                      fontFamily: 'var(--font-ui)', margin: 0,
+                    }}>
+                      Pick your top 3 content styles
+                    </p>
+                    <span style={{
+                      fontSize: 12, fontWeight: 700,
+                      color: styles.length === MAX_STYLES ? 'var(--accent)' : styles.length >= 1 ? 'var(--text-muted)' : 'var(--text-dim)',
+                      fontFamily: 'var(--font-ui)',
+                      transition: 'color 0.2s',
+                    }}>
+                      {styles.length} / {MAX_STYLES}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {STYLES.map(s => {
+                      const active = styles.includes(s.id);
+                      const maxed = styles.length >= MAX_STYLES && !active;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => toggleStyle(s.id)}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: 100,
+                            border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                            background: active ? 'var(--accent-dim)' : 'var(--surface)',
+                            color: active ? 'var(--accent)' : maxed ? 'var(--text-dim)' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-ui)',
+                            fontSize: 14, fontWeight: active ? 700 : 500,
+                            cursor: maxed ? 'not-allowed' : 'pointer',
+                            opacity: maxed ? 0.45 : 1,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {styles.length === 0 && (
+                    <p style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--font-ui)', marginTop: 8 }}>
+                      Pick at least 1 style to continue.
+                    </p>
+                  )}
                 </div>
-              </div>
+              )}
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <button
@@ -424,15 +478,15 @@ function OnboardingContent() {
                 </button>
                 <button
                   onClick={handleComplete}
-                  disabled={saving || platforms.length === 0 || !contentFormat}
+                  disabled={saving || !contentFormat || platforms.length === 0 || styles.length === 0}
                   style={{
                     flex: 1, padding: '14px',
-                    background: platforms.length > 0 && contentFormat ? 'var(--accent)' : 'var(--border)',
-                    color: platforms.length > 0 && contentFormat ? '#fff' : 'var(--text-dim)',
+                    background: (!saving && contentFormat && platforms.length > 0 && styles.length > 0) ? 'var(--accent)' : 'var(--border)',
+                    color: (!saving && contentFormat && platforms.length > 0 && styles.length > 0) ? '#fff' : 'var(--text-dim)',
                     border: 'none', borderRadius: 10,
                     fontSize: 15, fontWeight: 700,
                     fontFamily: 'var(--font-ui)',
-                    cursor: !saving && (platforms.length > 0 || styles.length > 0) ? 'pointer' : 'not-allowed',
+                    cursor: (!saving && contentFormat && platforms.length > 0 && styles.length > 0) ? 'pointer' : 'not-allowed',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     transition: 'all 0.15s',
                     letterSpacing: '-0.01em',
