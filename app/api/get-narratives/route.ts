@@ -1,11 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { auth } from '@clerk/nextjs/server';
+import { supabase } from '@/lib/supabase';
 
 // Raise Vercel function timeout to 60s (max on Hobby plan with Fluid Compute)
 export const maxDuration = 60;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
+
+const PLATFORM_LABELS: Record<string, string> = {
+  youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram',
+  facebook: 'Facebook', linkedin: 'LinkedIn', podcast: 'Podcast',
+  newsletter: 'Newsletter', blog: 'Blog',
+};
+
+const STYLE_LABELS: Record<string, string> = {
+  educational: 'Educational breakdowns', storytelling: 'Personal storytelling',
+  hot_takes: 'Hot takes & opinions', interviews: 'Interviews',
+  documentary: 'Documentary', tutorials: 'Tutorials',
+  trends: 'Trends & commentary', reaction: 'Reaction & commentary',
+  vlog: 'Day in the life / Vlog', challenge: 'Challenge / Experiment',
+  case_study: 'Case study / Deep dive', review: 'Review & comparison',
+  satire: 'Satire / Comedy', qa: 'Q&A / AMA', listicle: 'List / Roundup',
+};
+
+function buildCreatorContext(platforms: string[], styles: string[], brief: string): string {
+  const platformStr = platforms.length
+    ? platforms.map(p => PLATFORM_LABELS[p] || p).join(', ')
+    : 'unspecified platform';
+  const styleStr = styles.length
+    ? styles.map(s => STYLE_LABELS[s] || s).join(', ')
+    : null;
+  let ctx = `CREATOR CONTEXT:\nThis creator makes content for: ${platformStr}.\nTheir audience: ${brief || 'general audience'}.`;
+  if (styleStr) {
+    ctx += `\nTheir content style(s): ${styleStr}.`;
+    ctx += `\n\nIMPORTANT: The 3 content ideas for each narrative MUST be tailored to these specific formats — ${styleStr}. Do not use generic Educational/Story/Debate labels. Instead, frame each idea as this specific creator would execute it on ${platformStr}. A YouTube tutorial idea looks different from a LinkedIn post idea. Make it feel personal and immediately actionable for THEM.`;
+  }
+  return ctx;
+}
 
 const SYSTEM_PROMPT = `You are the Audience Intelligence Engine for MakeThisContent — a tool that helps content creators understand what their audience is actually discussing, debating, and feeling.
 
@@ -47,6 +80,28 @@ export async function GET(req: NextRequest) {
     if (!postUrl) {
       return NextResponse.json({ error: 'url parameter required' }, { status: 400 });
     }
+
+    // Fetch creator profile for personalised content ideas
+    let creatorPlatforms: string[] = [];
+    let creatorStyles: string[] = [];
+    let audienceBrief = '';
+    try {
+      const { userId } = await auth();
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('platforms, content_styles, audience_brief')
+          .eq('user_id', userId)
+          .single();
+        if (profile) {
+          creatorPlatforms = profile.platforms || [];
+          creatorStyles = profile.content_styles || [];
+          audienceBrief = profile.audience_brief || '';
+        }
+      }
+    } catch { /* profile fetch is best-effort — degrade gracefully */ }
+
+    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief);
 
     // Fetch full comment tree from backend (now returns recursively flattened tree)
     const commentsRes = await fetch(
@@ -102,7 +157,7 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
     const claudeResponse = await client.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 1200,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + '\n\n' + creatorContext,
       messages: [{ role: 'user', content: userMessage }],
     });
 
