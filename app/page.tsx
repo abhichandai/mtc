@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 
@@ -17,6 +17,11 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
 
   const isValid = brief.trim().length >= 3;
+
+  // Auto-redirect signed-in users straight to dashboard
+  useEffect(() => {
+    if (isSignedIn) router.push('/dashboard');
+  }, [isSignedIn, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
