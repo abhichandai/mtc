@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
 
 const EXAMPLES = [
   'Entrepreneurs who want to grow a productive, profitable business',
@@ -11,6 +12,7 @@ const EXAMPLES = [
 
 export default function LandingPage() {
   const router = useRouter();
+  const { isSignedIn } = useAuth();
   const [brief, setBrief] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +22,13 @@ export default function LandingPage() {
     e.preventDefault();
     if (!isValid || loading) return;
     setLoading(true);
-    router.push(`/dashboard?${new URLSearchParams({ k: brief.trim() })}`);
+    const dashboardUrl = `/dashboard?${new URLSearchParams({ k: brief.trim() })}`;
+    if (isSignedIn) {
+      router.push(dashboardUrl);
+    } else {
+      // Pass the destination as redirect_url so Clerk returns here after auth
+      router.push(`/sign-up?redirect_url=${encodeURIComponent(dashboardUrl)}`);
+    }
   };
 
   return (

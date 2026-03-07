@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MakeThisContent — Trends Intelligence for Creators",
-  description: "See what your audience is talking about right now. Enter your niche, get 10 live trending topics with real Twitter conversations.",
+  title: "MakeThisContent — Audience Intelligence for Creators",
+  description: "Keep a finger on the pulse of your audience. Discover what your niche communities are actively discussing and create content they actually want to see.",
   openGraph: {
     title: "MakeThisContent",
-    description: "Real-time trend intelligence for content creators",
+    description: "True Audience Intelligence for content creators",
     siteName: "MakeThisContent",
   },
 };
@@ -17,8 +18,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body>{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }
