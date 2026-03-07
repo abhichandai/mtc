@@ -16,6 +16,46 @@ const TEST_SUBREDDITS = ['entrepreneur', 'productivity'];
 const TEST_CARD_LIMIT = 3;
 const TEST_FETCH_LIMIT = 5;
 
+// ─── DASHBOARD CACHE ─────────────────────────────────────────────────────────
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+function getCacheKey(brief: string) {
+  return `mtc_dashboard_${brief.trim().toLowerCase().slice(0, 100)}`;
+}
+
+function loadCache(brief: string): { result: ApiResult; subreddits: string[]; savedAt: number } | null {
+  try {
+    const raw = localStorage.getItem(getCacheKey(brief));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.savedAt > CACHE_TTL_MS) {
+      localStorage.removeItem(getCacheKey(brief));
+      return null;
+    }
+    return parsed;
+  } catch { return null; }
+}
+
+function saveCache(brief: string, result: ApiResult, subreddits: string[]) {
+  try {
+    localStorage.setItem(getCacheKey(brief), JSON.stringify({ result, subreddits, savedAt: Date.now() }));
+  } catch { /* storage full or unavailable — silently skip */ }
+}
+
+function clearCache(brief: string) {
+  try { localStorage.removeItem(getCacheKey(brief)); } catch { /* ignore */ }
+}
+
+function timeAgoMs(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Tweet {
   id?: string;
   text?: string;
@@ -221,6 +261,7 @@ function DashboardContent() {
   const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
   const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   // Cache narratives by post URL so they don't regenerate on every open
   const [narrativesCache, setNarrativesCache] = useState<Record<string, {
     narratives: Array<{headline: string; insight: string; angle: string}>;
@@ -229,8 +270,21 @@ function DashboardContent() {
     generated_at: number;
   }>>({});
 
-  const fetchTrends = useCallback(async () => {
+  const fetchTrends = useCallback(async (forceRefresh = false) => {
     if (!brief) { router.push('/'); return; }
+
+    // ── Check cache first (unless forced refresh) ──────────────────────────
+    if (!forceRefresh) {
+      const cached = loadCache(brief);
+      if (cached) {
+        setResult(cached.result);
+        setLastRefreshedAt(cached.savedAt);
+        setLastUpdated(new Date(cached.savedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     setNarrativesCache({});
@@ -267,28 +321,23 @@ function DashboardContent() {
         throw new Error('No posts returned from Reddit');
       }
 
-      // ── Slice to card limit ────────────────────────────────────────────────
       const cardLimit = TEST_MODE ? TEST_CARD_LIMIT : 12;
-      // Soft cap: show up to 12, but fewer is fine if that's all we have
       const topPosts = redditData.posts.slice(0, cardLimit);
-
-      // ── Twitter enrichment disabled — will re-route via ScrapeCreators ──────
-      // X API calls removed. Parent re-renders from enrichment were also
-      // interfering with narratives state. Re-enabling once SC integration ready.
       const trends: Trend[] = topPosts.map((post: Trend) => ({ ...post, tweets: [] }));
 
-      setResult({
+      const freshResult: ApiResult = {
         success: true,
-        niche: {
-          keywords,
-          description: nicheDescription,
-          subreddits,
-        },
+        niche: { keywords, description: nicheDescription, subreddits },
         trends,
         total_analyzed: redditData.count || 0,
         source: 'reddit',
-      });
-      setLastUpdated(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      };
+
+      const now = Date.now();
+      saveCache(brief, freshResult, subreddits);
+      setResult(freshResult);
+      setLastRefreshedAt(now);
+      setLastUpdated(new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
@@ -296,7 +345,7 @@ function DashboardContent() {
     }
   }, [brief]);
 
-  useEffect(() => { fetchTrends(); }, [fetchTrends]);
+  useEffect(() => { fetchTrends(false); }, [fetchTrends]);
 
   if (!brief) return null;
 
@@ -322,8 +371,12 @@ function DashboardContent() {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {lastUpdated && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Updated {lastUpdated}</span>}
-          <button className="btn-ghost" onClick={fetchTrends} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
+          {lastRefreshedAt && (
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+              Refreshed {timeAgoMs(lastRefreshedAt)}
+            </span>
+          )}
+          <button className="btn-ghost" onClick={() => { clearCache(brief); fetchTrends(true); }} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
               style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
               <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>

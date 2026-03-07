@@ -10,9 +10,11 @@ interface Tweet {
 }
 
 interface Narrative {
+  type?: 'consensus' | 'contested' | 'contrarian';
   headline: string;
   insight: string;
   angle: string;
+  signal?: string;
 }
 
 interface Trend {
@@ -148,7 +150,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     let idea = `📈 Trending on r/${trend.subreddit}: ${topic}\n\n`;
     if (narratives.length > 0) {
       idea += `🧠 Top 3 Narratives:\n`;
-      narratives.forEach((n, i) => {
+      narratives.forEach((n: Narrative, i: number) => {
         idea += `${i + 1}. ${n.headline}\n   ${n.insight}\n   💡 Content angle: ${n.angle}\n\n`;
       });
     } else {
@@ -305,32 +307,47 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
           )}
 
           {/* Results */}
-          {narrativesState === 'done' && narratives.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {narratives.map((narrative, i) => (
-                <div key={i} style={{
-                  background: 'var(--surface-2)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '14px 16px',
-                  borderLeft: '3px solid var(--accent)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 4, padding: '2px 7px', flexShrink: 0 }}>
-                      #{i + 1}
-                    </span>
-                    <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-ui)', color: 'var(--text)', lineHeight: 1.3 }}>
-                      {narrative.headline}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
-                    {narrative.insight}
-                  </p>
-                  <div style={{ fontSize: 12, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4 }}>
-                    <span style={{ fontWeight: 700 }}>💡 Content angle: </span>{narrative.angle}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {narrativesState === 'done' && narratives.length > 0 && (() => {
+            const typeConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
+              consensus:   { label: 'CONSENSUS',   color: '#16a34a', bg: 'rgba(22,163,74,0.08)',   border: '#16a34a' },
+              contested:   { label: 'CONTESTED',   color: '#dc2626', bg: 'rgba(220,38,38,0.08)',   border: '#dc2626' },
+              contrarian:  { label: 'CONTRARIAN',  color: '#d97706', bg: 'rgba(217,119,6,0.08)',   border: '#d97706' },
+            };
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {narratives.map((narrative, i) => {
+                  const cfg = typeConfig[narrative.type || ''] || { label: `#${i+1}`, color: 'var(--accent)', bg: 'var(--surface-2)', border: 'var(--accent)' };
+                  return (
+                    <div key={i} style={{
+                      background: cfg.bg, border: `1px solid var(--border)`,
+                      borderRadius: 10, padding: '14px 16px',
+                      borderLeft: `3px solid ${cfg.border}`,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: cfg.color, background: `${cfg.border}22`, borderRadius: 4, padding: '2px 7px', letterSpacing: '0.06em', flexShrink: 0 }}>
+                          {cfg.label}
+                        </span>
+                        <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-ui)', color: 'var(--text)', lineHeight: 1.3 }}>
+                          {narrative.headline}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+                        {narrative.insight}
+                      </p>
+                      <div style={{ fontSize: 12, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4, marginBottom: narrative.signal ? 8 : 0 }}>
+                        <span style={{ fontWeight: 700 }}>💡 Content angle: </span>{narrative.angle}
+                      </div>
+                      {narrative.signal && (
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6, fontStyle: 'italic' }}>
+                          Signal: {narrative.signal}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Google Trends fallback (kept for compatibility) */}
@@ -360,6 +377,10 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
 
       {/* Sticky footer CTA */}
       <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', bottom: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.04em' }}>⚡</span>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.04em', fontWeight: 600 }}>POWERED BY AUDIENCE INTELLIGENCE ENGINE</span>
+        </div>
         <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
           {narrativesState === 'done' ? 'Narratives included — copy your full brief' : 'Jump on this trend — your audience is talking about it right now'}
         </p>

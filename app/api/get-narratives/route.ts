@@ -4,6 +4,37 @@ import Anthropic from '@anthropic-ai/sdk';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
 
+const SYSTEM_PROMPT = `You are the Audience Intelligence Engine for MakeThisContent — a tool that helps content creators understand what their audience is actually discussing, debating, and feeling.
+
+Your job is NOT to summarise comments. Your job is to map the debate topology of a Reddit thread — identify the distinct positions, tensions, and perspectives that represent genuinely different points of view.
+
+You will receive a list of comments with their scores (upvotes), depth (0 = top-level, 1+ = reply), controversiality flag, and age in hours. Use all of this signal.
+
+Find exactly 3 narratives. Each must fit one of these types:
+
+1. CONSENSUS — The dominant view. What most of the community agrees on. High-score comments that reinforce each other. This is what the crowd believes.
+
+2. CONTESTED — Where active disagreement lives. Look for: comments that directly push back on the consensus, high controversiality scores, reply chains where people debate rather than agree, competing camps with significant upvotes on both sides.
+
+3. CONTRARIAN — A surprising minority take that challenges the premise or offers an unexpected angle. It may have fewer upvotes than the consensus but it has some upvote signal — it's not noise, it's a genuine alternative view the community has partially endorsed.
+
+CRITICAL RULES:
+- If you genuinely cannot find a CONTESTED narrative (thread is pure consensus), say so honestly. Do not fabricate disagreement.
+- If you genuinely cannot find a CONTRARIAN narrative, say so. Do not force one.
+- Each narrative must be meaningfully distinct. No two narratives should be variations of the same idea.
+- Prioritise recency: a comment from 2 hours ago with 50 upvotes is more relevant than one from 5 days ago with 200 upvotes. Weight accordingly.
+- The content angle must be SPECIFIC and ACTIONABLE — a creator should be able to start writing or filming immediately from your suggestion.
+
+Return ONLY valid JSON. No markdown, no explanation, no preamble.`;
+
+interface Comment {
+  score: number;
+  body: string;
+  depth: number;
+  controversiality: number;
+  created_utc: number;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -14,10 +45,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'url parameter required' }, { status: 400 });
     }
 
-    // Step 1: Fetch top comments from backend
+    // Fetch full comment tree from backend (now returns recursively flattened tree)
     const commentsRes = await fetch(
       `${BACKEND_URL}/trends/reddit/comments?url=${encodeURIComponent(postUrl)}`,
-      { signal: AbortSignal.timeout(15000) }
+      { signal: AbortSignal.timeout(20000) }
     );
     const commentsData = await commentsRes.json();
 
@@ -26,41 +57,46 @@ export async function GET(req: NextRequest) {
     }
 
     const postBody = commentsData.post_body || '';
+    const now = Math.floor(Date.now() / 1000);
 
-    // Take top 15 comments by score for synthesis
-    const topComments = commentsData.comments
-      .slice(0, 15)
-      .map((c: { score: number; body: string }, i: number) => `[${i + 1}] (${c.score} upvotes): ${c.body}`)
-      .join('\n\n');
+    // Format all comments with full metadata for Sonnet
+    // Include score, depth, controversiality, age in hours
+    const allComments = commentsData.comments
+      .map((c: Comment, i: number) => {
+        const ageHours = c.created_utc ? Math.round((now - c.created_utc) / 3600) : 0;
+        const depthLabel = c.depth === 0 ? 'top-level' : `reply (depth ${c.depth})`;
+        const controversial = c.controversiality === 1 ? ' [CONTROVERSIAL]' : '';
+        return `[${i + 1}] ${depthLabel} | score: ${c.score} | age: ${ageHours}h ago${controversial}\n${c.body}`;
+      })
+      .join('\n\n---\n\n');
 
-    // Step 2: Claude Haiku synthesizes the top 3 narratives
-    const claudeResponse = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
-      messages: [{
-        role: 'user',
-        content: `You are analyzing Reddit comments to extract the top 3 narratives for a content creator.
+    const userMessage = `Post title: "${postTitle}"
+${postBody ? `\nPost body: "${postBody.slice(0, 600)}"\n` : ''}
+Total comments analysed: ${commentsData.comments.length}
 
-Post title: "${postTitle}"
-${postBody ? `\nPost body: "${postBody.slice(0, 500)}"\n` : ''}
-Top comments by upvotes:
-${topComments}
+COMMENTS:
+${allComments}
 
-Identify the 3 most distinct narratives or perspectives that people are expressing in these comments. Each narrative should represent a meaningful angle that a content creator could make content about.
-
-Return ONLY valid JSON (no markdown, no explanation):
+Identify the 3 narratives in this thread. Return this exact JSON structure:
 {
   "narratives": [
     {
-      "headline": "5-8 word punchy headline for this narrative",
-      "insight": "1-2 sentences on what people are saying and why it matters for content",
-      "angle": "One specific content idea this suggests"
-    },
-    { ... },
-    { ... }
-  ]
-}`,
-      }],
+      "type": "consensus" | "contested" | "contrarian",
+      "headline": "5-8 word punchy headline",
+      "insight": "2-3 sentences: what people are saying, why it matters, what tension or agreement exists",
+      "angle": "One highly specific, immediately actionable content idea a creator can execute today",
+      "signal": "Brief note on what data signals identified this narrative (e.g. '3 top-scored comments reinforce this' or 'high controversiality flag + pushback replies')"
+    }
+  ],
+  "thread_type": "debate" | "advice" | "experience-sharing" | "mixed",
+  "missing_narratives": "null or brief explanation if contested/contrarian genuinely not present"
+}`;
+
+    const claudeResponse = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1200,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
     });
 
     const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
@@ -69,8 +105,10 @@ Return ONLY valid JSON (no markdown, no explanation):
     return NextResponse.json({
       success: true,
       narratives: parsed.narratives || [],
+      thread_type: parsed.thread_type || 'mixed',
+      missing_narratives: parsed.missing_narratives || null,
       comment_count: commentsData.count,
-      post_body: postBody,   // return so frontend can update the card preview
+      post_body: postBody,
     });
 
   } catch (error) {
@@ -81,4 +119,3 @@ Return ONLY valid JSON (no markdown, no explanation):
     );
   }
 }
-
