@@ -270,30 +270,10 @@ function DashboardContent() {
       // Soft cap: show up to 12, but fewer is fine if that's all we have
       const topPosts = redditData.posts.slice(0, cardLimit);
 
-      // ── Twitter enrichment (skipped in test mode) ──────────────────────────
-      let trends: Trend[];
-      if (TEST_MODE) {
-        trends = topPosts.map((post: Trend) => ({ ...post, tweets: [] }));
-      } else {
-        const enriched = await Promise.allSettled(
-          topPosts.map(async (post: Trend) => {
-            try {
-              const twitterRes = await fetch(
-                `/api/twitter-for-trend?query=${encodeURIComponent(post.title || '')}&limit=5`,
-                { signal: AbortSignal.timeout(6000) }
-              );
-              if (!twitterRes.ok) return { ...post, tweets: [], twitterError: true };
-              const td = await twitterRes.json();
-              return { ...post, tweets: td.data?.tweets?.slice(0, 5) || [] };
-            } catch {
-              return { ...post, tweets: [], twitterError: true };
-            }
-          })
-        );
-        trends = enriched
-          .filter(r => r.status === 'fulfilled')
-          .map(r => (r as PromiseFulfilledResult<Trend>).value);
-      }
+      // ── Twitter enrichment disabled — will re-route via ScrapeCreators ──────
+      // X API calls removed. Parent re-renders from enrichment were also
+      // interfering with narratives state. Re-enabling once SC integration ready.
+      const trends: Trend[] = topPosts.map((post: Trend) => ({ ...post, tweets: [] }));
 
       setResult({
         success: true,

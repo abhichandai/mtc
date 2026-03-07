@@ -74,6 +74,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   const [commentCount, setCommentCount] = useState(cachedNarratives?.comment_count || 0);
   const [postBody, setPostBody] = useState(cachedNarratives?.post_body || trend.preview || '');
   const [generatedAt, setGeneratedAt] = useState<number | null>(cachedNarratives?.generated_at || null);
+  // Track which URL the current state belongs to — only reset when card changes
+  const [stateUrl, setStateUrl] = useState<string>(trend.permalink || trend.url || '');
 
   const topic = getTopicName(trend);
   const isReddit = isRedditPost(trend);
@@ -82,21 +84,29 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     : (trend.increase_percentage || trend.growth || 0) > 500;
 
   useEffect(() => {
+    const currentUrl = trend.permalink || trend.url || '';
+    const cardChanged = currentUrl !== stateUrl;
+
     if (cachedNarratives) {
+      // Always apply cache when available
       setNarrativesState('done');
       setNarratives(cachedNarratives.narratives);
       setPostBody(cachedNarratives.post_body || trend.preview || '');
       setCommentCount(cachedNarratives.comment_count);
       setGeneratedAt(cachedNarratives.generated_at || null);
-    } else {
-      // Don't reset if a fetch is in progress or errored — a parent re-render
-      // (e.g. Twitter enrichment coming in) creates a new trend object reference
-      // which would otherwise wipe out loading/error state mid-flight.
-      setNarrativesState(prev => (prev === 'loading' || prev === 'error') ? prev : 'idle');
-      setNarratives(prev => prev.length > 0 ? prev : []);
-      setPostBody(prev => prev || trend.preview || '');
+      setStateUrl(currentUrl);
+    } else if (cardChanged) {
+      // Only reset state when opening a genuinely different card.
+      // Parent re-renders (Twitter enrichment, etc.) create new trend object
+      // references for the SAME post — we must not reset mid-fetch in that case.
+      setNarrativesState('idle');
+      setNarratives([]);
+      setPostBody(trend.preview || '');
       setGeneratedAt(null);
+      setStateUrl(currentUrl);
     }
+    // If same card + no cache: leave state alone (fetch may be in progress)
+
     const handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
