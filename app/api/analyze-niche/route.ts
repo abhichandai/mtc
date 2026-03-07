@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { auth } from '@clerk/nextjs/server';
+import { supabase } from '@/lib/supabase';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -10,9 +12,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Keywords required' }, { status: 400 });
     }
 
-    // keywords[0] is now the full audience brief from the free-text input
     const brief = keywords.filter(Boolean).join(' ');
 
+    // Check Supabase cache first — if the brief matches what we last computed, reuse
+    let userId: string | null = null;
+    try {
+      const authResult = await auth();
+      userId = authResult.userId;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('cached_subreddits, cached_brief')
+          .eq('user_id', userId)
+          .single();
+
+        if (profile?.cached_subreddits?.length && profile.cached_brief === brief) {
+          return NextResponse.json({
+            success: true,
+            subreddits: profile.cached_subreddits,
+            description: brief,
+            keywords,
+            cached: true,
+          });
+        }
+      }
+    } catch { /* cache check is best-effort */ }
+
+    // Not cached — call Claude to compute subreddits
     let subreddits: string[] = ['entrepreneur', 'productivity', 'SideProject'];
     let description = brief;
 
@@ -47,11 +73,22 @@ Return ONLY valid JSON (no markdown, no explanation):
       console.error('Claude analysis failed:', e);
     }
 
+    // Store in Supabase for future requests
+    if (userId) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ cached_subreddits: subreddits, cached_brief: brief })
+          .eq('user_id', userId);
+      } catch { /* cache write is best-effort */ }
+    }
+
     return NextResponse.json({
       success: true,
       subreddits,
       description,
       keywords,
+      cached: false,
     });
 
   } catch (error) {

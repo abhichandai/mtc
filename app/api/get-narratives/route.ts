@@ -158,9 +158,13 @@ export async function GET(req: NextRequest) {
     const postBody = commentsData.post_body || '';
     const now = Math.floor(Date.now() / 1000);
 
-    // Send all comments with recency-weighted metadata — no cap
-    // maxDuration = 60 gives Sonnet enough time to analyse the full corpus
-    const allComments = commentsData.comments
+    // Cap at top 80 comments by score — signal is concentrated in high-voted comments.
+    // Sending 400+ comments blows the 60s Hobby plan timeout; top 80 captures all meaningful signal.
+    const topComments: Comment[] = [...commentsData.comments]
+      .sort((a: Comment, b: Comment) => b.score - a.score)
+      .slice(0, 80);
+
+    const allComments = topComments
       .map((c: Comment, i: number) => {
         const ageHours = c.created_utc ? Math.round((now - c.created_utc) / 3600) : 0;
         const depthLabel = c.depth === 0 ? 'top-level' : `reply (depth ${c.depth})`;
@@ -171,7 +175,7 @@ export async function GET(req: NextRequest) {
 
     const userMessage = `Post title: "${postTitle}"
 ${postBody ? `\nPost body: "${postBody.slice(0, 600)}"\n` : ''}
-Total comments analysed: ${commentsData.comments.length}
+Top ${topComments.length} comments analysed (of ${commentsData.comments.length} total), ranked by score
 
 COMMENTS:
 ${allComments}

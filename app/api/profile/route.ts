@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
         ...(content_styles !== undefined && { content_styles }),
         ...(content_format !== undefined && { content_format }),
         ...(onboarding_completed !== undefined && { onboarding_completed }),
+        // Clear subreddit cache when the brief changes so analyze-niche recomputes on next load
+        ...(audience_brief !== undefined && { cached_subreddits: null, cached_brief: null }),
       },
       { onConflict: 'user_id' }
     )
