@@ -367,7 +367,13 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                                 display: 'flex', gap: 8, alignItems: 'flex-start',
                               }}>
                                 <span style={{ fontWeight: 700, color: cfg.color, flexShrink: 0 }}>{j + 1}.</span>
-                                <span>{idea}</span>
+                                <span>{(() => {
+                                  const colonIdx = idea.indexOf(':');
+                                  if (colonIdx > 0 && colonIdx < 20) {
+                                    return <><strong style={{ color: 'var(--text)' }}>{idea.slice(0, colonIdx)}</strong>{idea.slice(colonIdx)}</>;
+                                  }
+                                  return idea;
+                                })()}</span>
                               </div>
                             ))}
                           </div>
