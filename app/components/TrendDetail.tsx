@@ -13,8 +13,10 @@ interface Narrative {
   type?: 'consensus' | 'contested' | 'contrarian';
   headline: string;
   insight: string;
-  angle: string;
   signal?: string;
+  content_ideas?: string[];
+  // legacy field — kept for cached narratives from old format
+  angle?: string;
 }
 
 interface Trend {
@@ -314,32 +316,56 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
               contrarian:  { label: 'CONTRARIAN',  color: '#d97706', bg: 'rgba(217,119,6,0.08)',   border: '#d97706' },
             };
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {narratives.map((narrative, i) => {
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {narratives.map((narrative: Narrative, i: number) => {
                   const cfg = typeConfig[narrative.type || ''] || { label: `#${i+1}`, color: 'var(--accent)', bg: 'var(--surface-2)', border: 'var(--accent)' };
+                  const ideas = narrative.content_ideas || (narrative.angle ? [narrative.angle] : []);
                   return (
                     <div key={i} style={{
                       background: cfg.bg, border: `1px solid var(--border)`,
-                      borderRadius: 10, padding: '14px 16px',
+                      borderRadius: 12, padding: '16px 18px',
                       borderLeft: `3px solid ${cfg.border}`,
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: cfg.color, background: `${cfg.border}22`, borderRadius: 4, padding: '2px 7px', letterSpacing: '0.06em', flexShrink: 0 }}>
+                      {/* Type badge + headline */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: cfg.color, background: `${cfg.border}22`, borderRadius: 4, padding: '2px 7px', letterSpacing: '0.06em', flexShrink: 0, marginTop: 2 }}>
                           {cfg.label}
                         </span>
-                        <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-ui)', color: 'var(--text)', lineHeight: 1.3 }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-ui)', color: 'var(--text)', lineHeight: 1.3 }}>
                           {narrative.headline}
                         </span>
                       </div>
-                      <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+
+                      {/* Insight */}
+                      <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
                         {narrative.insight}
                       </p>
-                      <div style={{ fontSize: 12, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4, marginBottom: narrative.signal ? 8 : 0 }}>
-                        <span style={{ fontWeight: 700 }}>💡 Content angle: </span>{narrative.angle}
-                      </div>
+
+                      {/* Signal — why this narrative was identified */}
                       {narrative.signal && (
-                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6, fontStyle: 'italic' }}>
-                          Signal: {narrative.signal}
+                        <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 12, paddingLeft: 10, borderLeft: '2px solid var(--border-bright)' }}>
+                          {narrative.signal}
+                        </div>
+                      )}
+
+                      {/* Content Ideas */}
+                      {ideas.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: cfg.color, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 8 }}>
+                            💡 Content Ideas
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {ideas.map((idea: string, j: number) => (
+                              <div key={j} style={{
+                                fontSize: 12, color: 'var(--text-muted)', background: 'var(--accent-dim)',
+                                borderRadius: 6, padding: '7px 10px', lineHeight: 1.5,
+                                display: 'flex', gap: 8, alignItems: 'flex-start',
+                              }}>
+                                <span style={{ fontWeight: 700, color: cfg.color, flexShrink: 0 }}>{j + 1}.</span>
+                                <span>{idea}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

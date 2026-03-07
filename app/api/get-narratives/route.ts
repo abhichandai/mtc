@@ -84,8 +84,12 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
       "type": "consensus" | "contested" | "contrarian",
       "headline": "5-8 word punchy headline",
       "insight": "2-3 sentences: what people are saying, why it matters, what tension or agreement exists",
-      "angle": "One highly specific, immediately actionable content idea a creator can execute today",
-      "signal": "Brief note on what data signals identified this narrative (e.g. '3 top-scored comments reinforce this' or 'high controversiality flag + pushback replies')"
+      "signal": "1-2 sentences explaining WHY you identified this as a narrative — what pattern in the discussion stood out. Plain language, no comment numbers.",
+      "content_ideas": [
+        "Direction 1 — a broad creative angle the creator can take on this narrative in their own style",
+        "Direction 2 — a different format or perspective on the same narrative",
+        "Direction 3 — a third distinct approach, perhaps more niche or counterintuitive"
+      ]
     }
   ],
   "thread_type": "debate" | "advice" | "experience-sharing" | "mixed",
