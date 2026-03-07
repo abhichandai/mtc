@@ -50,7 +50,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { signOut } = useClerk();
   const { user } = useUser();
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
