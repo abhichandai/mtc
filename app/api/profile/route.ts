@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { audience_brief, platforms, content_styles, onboarding_completed } = body;
+  const { audience_brief, platforms, content_styles, content_format, onboarding_completed } = body;
 
   const { data, error } = await supabase
     .from('profiles')
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
         ...(audience_brief !== undefined && { audience_brief }),
         ...(platforms !== undefined && { platforms }),
         ...(content_styles !== undefined && { content_styles }),
+        ...(content_format !== undefined && { content_format }),
         ...(onboarding_completed !== undefined && { onboarding_completed }),
       },
       { onConflict: 'user_id' }

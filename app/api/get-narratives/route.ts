@@ -25,41 +25,56 @@ const STYLE_LABELS: Record<string, string> = {
   satire: 'Satire / Comedy', qa: 'Q&A / AMA', listicle: 'List / Roundup',
 };
 
-function buildCreatorContext(platforms: string[], styles: string[], brief: string): string {
+const FORMAT_LABELS: Record<string, string> = {
+  long_form: 'Long Form',
+  short_form: 'Short Form',
+  text: 'Text Articles',
+};
+
+const DEFAULT_STYLES = ['Educational breakdowns', 'Personal storytelling', 'Hot takes & opinions'];
+
+function buildCreatorContext(platforms: string[], styles: string[], brief: string, contentFormat: string): string {
   const platformStr = platforms.length
     ? platforms.map(p => PLATFORM_LABELS[p] || p).join(', ')
     : null;
-  const styleLabels = styles.length
-    ? styles.map(s => STYLE_LABELS[s] || s)
-    : null;
-  const styleStr = styleLabels ? styleLabels.join(', ') : null;
-  const ideaCount = styles.length || 3;
+
+  // Fill up to 3 styles with defaults if fewer than 3 selected
+  const selectedStyleLabels = styles.map(s => STYLE_LABELS[s] || s);
+  const fillerStyles = DEFAULT_STYLES.filter(d => !selectedStyleLabels.includes(d));
+  const allStyleLabels = [...selectedStyleLabels, ...fillerStyles].slice(0, 3);
+
+  const formatLabel = contentFormat ? FORMAT_LABELS[contentFormat] || contentFormat : null;
 
   let ctx = `CREATOR CONTEXT:`;
   ctx += `\nAudience: ${brief || 'general audience'}.`;
   if (platformStr) ctx += `\nPlatform(s): ${platformStr}.`;
-  if (styleStr) ctx += `\nContent style(s): ${styleStr}.`;
+  if (formatLabel) ctx += `\nPrimary content format: ${formatLabel}.`;
+  ctx += `\nContent styles: ${allStyleLabels.join(', ')}.`;
 
   ctx += `\n\nCONTENT IDEAS INSTRUCTIONS:`;
-  ctx += `\nGenerate exactly ${ideaCount} content idea(s) per narrative — one per style listed above.`;
+  ctx += `\nGenerate exactly 3 content ideas per narrative — one per style listed above (${allStyleLabels.join(', ')}).`;
+  ctx += `\nLabel each idea with its style name. Frame each as a concrete, immediately actionable piece.`;
 
-  if (styleLabels && styleLabels.length > 0) {
-    ctx += `\nEach idea must be labelled with its style and specifically framed for how this creator executes that format.`;
-    styleLabels.forEach(style => {
-      ctx += `\n- "${style}" idea: write it as a concrete ${style.toLowerCase()} piece${platformStr ? ` for ${platformStr}` : ''}.`;
-    });
+  allStyleLabels.forEach(style => {
+    ctx += `\n- "${style}": write this as a specific ${style.toLowerCase()} piece${platformStr ? ` suited for ${platformStr}` : ''}.`;
+  });
+
+  if (formatLabel) {
+    ctx += `\nFormat context: this creator makes ${formatLabel} content.`;
+    if (formatLabel === 'Short Form') ctx += ` Ideas should be punchy, single-focus, and built for fast consumption.`;
+    if (formatLabel === 'Long Form') ctx += ` Ideas can have depth — multi-part structure, thorough exploration, longer narrative arc.`;
+    if (formatLabel === 'Text Articles') ctx += ` Ideas should be argument-driven with a clear thesis, written voice, and structured flow.`;
   }
 
   if (platformStr && platforms.length >= 2) {
     const eg1 = PLATFORM_LABELS[platforms[0]] || platforms[0];
     const eg2 = PLATFORM_LABELS[platforms[1]] || platforms[1];
-    ctx += `\nRemember: the same topic looks very different on ${eg1} vs ${eg2} — tailor the framing, length, and hook accordingly.`;
+    ctx += `\nNote: the same topic looks and performs differently on ${eg1} vs ${eg2} — tailor the framing and format norms for each platform accordingly.`;
   } else if (platformStr) {
-    ctx += `\nTailor the framing, hook, and format specifically for ${platformStr}.`;
+    ctx += `\nTailor the framing and format norms specifically for ${platformStr}.`;
   }
 
-  ctx += `\nDo NOT use generic "Educational/Story/Debate" labels. Use the creator's actual style names as listed above.`;
-  ctx += `\nMake every idea immediately actionable — the creator should be able to start executing it today.`;
+  ctx += `\nDo NOT use generic "Educational/Story/Debate" labels — use the exact style names listed above.`;
 
   return ctx;
 }
@@ -109,23 +124,25 @@ export async function GET(req: NextRequest) {
     let creatorPlatforms: string[] = [];
     let creatorStyles: string[] = [];
     let audienceBrief = '';
+    let creatorFormat = '';
     try {
       const { userId } = await auth();
       if (userId) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('platforms, content_styles, audience_brief')
+          .select('platforms, content_styles, audience_brief, content_format')
           .eq('user_id', userId)
           .single();
         if (profile) {
           creatorPlatforms = profile.platforms || [];
           creatorStyles = profile.content_styles || [];
           audienceBrief = profile.audience_brief || '';
+          creatorFormat = profile.content_format || '';
         }
       }
     } catch { /* profile fetch is best-effort — degrade gracefully */ }
 
-    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief);
+    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief, creatorFormat);
 
     // Fetch full comment tree from backend (now returns recursively flattened tree)
     const commentsRes = await fetch(

@@ -35,6 +35,12 @@ const STYLES = [
 
 const MAX_STYLES = 3;
 
+const FORMATS = [
+  { id: 'long_form', label: 'Long Form', desc: 'YouTube videos, podcasts, long articles' },
+  { id: 'short_form', label: 'Short Form', desc: 'Reels, Shorts, TikToks, quick posts' },
+  { id: 'text', label: 'Text Articles', desc: 'Newsletters, blogs, LinkedIn posts' },
+];
+
 function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,6 +50,7 @@ function OnboardingContent() {
   const [brief, setBrief] = useState('');
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [styles, setStyles] = useState<string[]>([]);
+  const [contentFormat, setContentFormat] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -99,6 +106,7 @@ function OnboardingContent() {
           audience_brief: brief.trim(),
           platforms,
           content_styles: styles,
+          content_format: contentFormat,
           onboarding_completed: true,
         }),
       });
@@ -308,6 +316,48 @@ function OnboardingContent() {
                 </div>
               </div>
 
+              {/* Content Format */}
+              <div style={{ marginBottom: 28 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{
+                    fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
+                    textTransform: 'uppercase', color: 'var(--text-dim)',
+                    fontFamily: 'var(--font-ui)', margin: 0,
+                  }}>
+                    What&apos;s your primary content format?
+                  </p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {FORMATS.map(f => {
+                    const active = contentFormat === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setContentFormat(f.id)}
+                        style={{
+                          padding: '12px 16px',
+                          borderRadius: 10,
+                          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                          background: active ? 'var(--accent-dim)' : 'var(--surface)',
+                          fontFamily: 'var(--font-ui)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          textAlign: 'left',
+                          display: 'flex', flexDirection: 'column', gap: 2,
+                        }}
+                      >
+                        <span style={{ fontSize: 14, fontWeight: active ? 700 : 600, color: active ? 'var(--accent)' : 'var(--text)' }}>
+                          {f.label}
+                        </span>
+                        <span style={{ fontSize: 12, color: active ? 'var(--accent)' : 'var(--text-dim)', fontWeight: 400 }}>
+                          {f.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Style */}
               <div style={{ marginBottom: 32 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -374,11 +424,11 @@ function OnboardingContent() {
                 </button>
                 <button
                   onClick={handleComplete}
-                  disabled={saving || (platforms.length === 0 && styles.length === 0)}
+                  disabled={saving || platforms.length === 0 || !contentFormat}
                   style={{
                     flex: 1, padding: '14px',
-                    background: platforms.length > 0 || styles.length > 0 ? 'var(--accent)' : 'var(--border)',
-                    color: platforms.length > 0 || styles.length > 0 ? '#fff' : 'var(--text-dim)',
+                    background: platforms.length > 0 && contentFormat ? 'var(--accent)' : 'var(--border)',
+                    color: platforms.length > 0 && contentFormat ? '#fff' : 'var(--text-dim)',
                     border: 'none', borderRadius: 10,
                     fontSize: 15, fontWeight: 700,
                     fontFamily: 'var(--font-ui)',

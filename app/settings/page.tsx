@@ -36,6 +36,12 @@ const STYLES = [
 
 const MAX_STYLES = 3;
 
+const FORMATS = [
+  { id: 'long_form', label: 'Long Form', desc: 'YouTube videos, podcasts, long articles' },
+  { id: 'short_form', label: 'Short Form', desc: 'Reels, Shorts, TikToks, quick posts' },
+  { id: 'text', label: 'Text Articles', desc: 'Newsletters, blogs, LinkedIn posts' },
+];
+
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export default function SettingsPage() {
@@ -46,6 +52,7 @@ export default function SettingsPage() {
   const [brief, setBrief] = useState('');
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [styles, setStyles] = useState<string[]>([]);
+  const [contentFormat, setContentFormat] = useState<string>('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
   // Reset onboarding state
@@ -62,6 +69,7 @@ export default function SettingsPage() {
           setBrief(data.profile.audience_brief ?? '');
           setPlatforms(data.profile.platforms ?? []);
           setStyles(data.profile.content_styles ?? []);
+          setContentFormat(data.profile.content_format ?? '');
         }
       } finally {
         setLoading(false);
@@ -94,6 +102,7 @@ export default function SettingsPage() {
           audience_brief: brief.trim(),
           platforms,
           content_styles: styles,
+          content_format: contentFormat,
         }),
       });
       if (!res.ok) throw new Error();
@@ -196,6 +205,39 @@ export default function SettingsPage() {
                   transition: 'all 0.15s',
                 }}>
                   {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ── Content Format ── */}
+        <section style={{ marginBottom: 40 }}>
+          <label style={{
+            fontSize: 12, fontWeight: 700, letterSpacing: '0.07em',
+            textTransform: 'uppercase', color: 'var(--text-dim)',
+            fontFamily: 'var(--font-ui)', display: 'block', marginBottom: 10,
+          }}>
+            What&apos;s your primary content format?
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {FORMATS.map(f => {
+              const active = contentFormat === f.id;
+              return (
+                <button key={f.id} onClick={() => { setContentFormat(f.id); setSaveState('idle'); }} style={{
+                  padding: '12px 16px', borderRadius: 10,
+                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                  background: active ? 'var(--accent-dim)' : 'var(--surface)',
+                  fontFamily: 'var(--font-ui)', cursor: 'pointer',
+                  transition: 'all 0.15s', textAlign: 'left',
+                  display: 'flex', flexDirection: 'column', gap: 2,
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: active ? 700 : 600, color: active ? 'var(--accent)' : 'var(--text)' }}>
+                    {f.label}
+                  </span>
+                  <span style={{ fontSize: 12, color: active ? 'var(--accent)' : 'var(--text-dim)', fontWeight: 400 }}>
+                    {f.desc}
+                  </span>
                 </button>
               );
             })}
