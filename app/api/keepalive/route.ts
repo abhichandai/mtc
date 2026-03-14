@@ -6,7 +6,7 @@ export const maxDuration = 10;
 export async function GET() {
   try {
     // Lightweight query — just checks the connection is alive
-    const { error } = await supabase.from('profiles').select('id').limit(1);
+    const { error } = await supabase.from('profiles').select('user_id').limit(1);
 
     if (error) {
       console.error('[keepalive] Supabase ping failed:', error.message);
