@@ -545,6 +545,7 @@ function DashboardContent() {
               onClose={handleClosePanel}
               cachedNarratives={narrativesCache[selectedTrend.permalink || selectedTrend.url || '']}
               onNarrativesCached={(url, data) => setNarrativesCache(prev => ({ ...prev, [url]: data }))}
+              audienceBrief={brief}
             />
           </div>
         </>

@@ -63,21 +63,62 @@ function isRedditPost(trend: Trend): boolean {
   return !!(trend.title && trend.subreddit);
 }
 
-export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrativesCached }: {
+export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrativesCached, audienceBrief }: {
   trend: Trend;
   onClose: () => void;
   cachedNarratives?: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number };
   onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number }) => void;
+  audienceBrief?: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const [selectedIdeas, setSelectedIdeas] = useState<Set<string>>(new Set());
+  const [selectedIdeas, setSelectedIdeas] = useState<Map<string, Narrative>>(new Map());
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  const toggleIdea = (idea: string) => {
+  const toggleIdea = (idea: string, narrative: Narrative) => {
     setSelectedIdeas(prev => {
-      const next = new Set(prev);
-      next.has(idea) ? next.delete(idea) : next.add(idea);
+      const next = new Map(prev);
+      next.has(idea) ? next.delete(idea) : next.set(idea, narrative);
       return next;
     });
+  };
+
+  const handleSaveToList = async () => {
+    if (selectedIdeas.size === 0 || saveState === 'saving') return;
+    setSaveState('saving');
+    try {
+      // Group selected ideas by narrative
+      const byNarrative = new Map<string, { narrative: Narrative; ideas: string[] }>();
+      selectedIdeas.forEach((narrative, idea) => {
+        const key = narrative.type || narrative.headline;
+        if (!byNarrative.has(key)) byNarrative.set(key, { narrative, ideas: [] });
+        byNarrative.get(key)!.ideas.push(idea);
+      });
+      await Promise.all(
+        Array.from(byNarrative.values()).map(({ narrative, ideas }) =>
+          fetch('/api/saved-ideas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              post_title: trend.title || '',
+              post_url: trend.url || trend.permalink || '',
+              subreddit: trend.subreddit || '',
+              narrative_type: narrative.type || '',
+              narrative_headline: narrative.headline || '',
+              narrative_insight: narrative.insight || '',
+              narrative_signal: narrative.signal || '',
+              selected_ideas: ideas,
+              audience_brief: audienceBrief || '',
+            }),
+          })
+        )
+      );
+      setSaveState('saved');
+      setSelectedIdeas(new Map());
+      setTimeout(() => setSaveState('idle'), 2000);
+    } catch {
+      setSaveState('error');
+      setTimeout(() => setSaveState('idle'), 2000);
+    }
   };
   const [narrativesState, setNarrativesState] = useState<'idle' | 'loading' | 'done' | 'error'>(
     cachedNarratives ? 'done' : 'idle'
@@ -100,7 +141,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     const currentUrl = trend.permalink || trend.url || '';
     const cardChanged = currentUrl !== stateUrl;
 
-    if (cardChanged) setSelectedIdeas(new Set());
+    if (cardChanged) { setSelectedIdeas(new Map()); setSaveState('idle'); }
 
     if (cachedNarratives) {
       // Always apply cache when available
@@ -375,7 +416,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                               const isSelected = selectedIdeas.has(idea);
                               return (
                                 <div key={j}
-                                  onClick={() => toggleIdea(idea)}
+                                  onClick={() => toggleIdea(idea, narrative)}
                                   style={{
                                     fontSize: 12, color: 'var(--text-muted)',
                                     background: isSelected ? `${cfg.border}18` : 'var(--accent-dim)',
@@ -450,16 +491,39 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
           <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.04em' }}>⚡</span>
           <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.04em', fontWeight: 600 }}>POWERED BY AUDIENCE INTELLIGENCE ENGINE</span>
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
-          {narrativesState === 'done' ? 'Narratives included — copy your full brief' : 'Jump on this trend — your audience is talking about it right now'}
-        </p>
-        <button className="btn-primary" onClick={handleCopyIdea} style={{ width: '100%', justifyContent: 'center' }}>
-          {copied ? (
-            <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>Copied!</>
-          ) : (
-            <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy content idea</>
-          )}
-        </button>
+
+        {selectedIdeas.size > 0 ? (
+          // Ideas selected — show Add to My List prominently + copy as secondary
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-ghost" onClick={handleCopyIdea} style={{ justifyContent: 'center', flex: '0 0 auto', padding: '10px 14px' }}>
+              {copied ? '✓' : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              )}
+            </button>
+            <button className="btn-primary" onClick={handleSaveToList} disabled={saveState === 'saving'}
+              style={{ flex: 1, justifyContent: 'center', gap: 6 }}>
+              {saveState === 'saving' && <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
+              {saveState === 'saved' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
+              {saveState === 'error' && '✕'}
+              {saveState === 'idle' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>}
+              {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? `Saved ${selectedIdeas.size === 0 ? '' : ''}` : saveState === 'error' ? 'Error — try again' : `Add ${selectedIdeas.size} idea${selectedIdeas.size > 1 ? 's' : ''} to My List`}
+            </button>
+          </div>
+        ) : (
+          // Nothing selected — show copy as primary
+          <>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
+              {narrativesState === 'done' ? 'Select ideas above to save them, or copy your full brief' : 'Jump on this trend — your audience is talking about it right now'}
+            </p>
+            <button className="btn-primary" onClick={handleCopyIdea} style={{ width: '100%', justifyContent: 'center' }}>
+              {copied ? (
+                <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>Copied!</>
+              ) : (
+                <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy content idea</>
+              )}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
