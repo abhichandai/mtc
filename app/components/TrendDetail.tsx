@@ -70,7 +70,6 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number }) => void;
   audienceBrief?: string;
 }) {
-  const [copied, setCopied] = useState(false);
   const [selectedIdeas, setSelectedIdeas] = useState<Map<string, Narrative>>(new Map());
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -198,22 +197,6 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       setNarrativeError(e instanceof Error ? e.message : 'Something went wrong');
       setNarrativesState('error');
     }
-  };
-
-  const handleCopyIdea = () => {
-    let idea = `📈 Trending on r/${trend.subreddit}: ${topic}\n\n`;
-    if (narratives.length > 0) {
-      idea += `🧠 Top 3 Narratives:\n`;
-      narratives.forEach((n: Narrative, i: number) => {
-        idea += `${i + 1}. ${n.headline}\n   ${n.insight}\n   💡 Content angle: ${n.angle}\n\n`;
-      });
-    } else {
-      idea += `💡 Content Idea: Create content about "${topic}" — getting traction in r/${trend.subreddit} with ${formatNumber(trend.score)} upvotes and ${formatNumber(trend.num_comments)} comments.\n\n`;
-    }
-    idea += `#ContentCreator #Trending`;
-    navigator.clipboard.writeText(idea);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -493,36 +476,19 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
         </div>
 
         {selectedIdeas.size > 0 ? (
-          // Ideas selected — show Add to My List prominently + copy as secondary
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-ghost" onClick={handleCopyIdea} style={{ justifyContent: 'center', flex: '0 0 auto', padding: '10px 14px' }}>
-              {copied ? '✓' : (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              )}
-            </button>
-            <button className="btn-primary" onClick={handleSaveToList} disabled={saveState === 'saving'}
-              style={{ flex: 1, justifyContent: 'center', gap: 6 }}>
-              {saveState === 'saving' && <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
-              {saveState === 'saved' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
-              {saveState === 'error' && '✕'}
-              {saveState === 'idle' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>}
-              {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? `Saved ${selectedIdeas.size === 0 ? '' : ''}` : saveState === 'error' ? 'Error — try again' : `Add ${selectedIdeas.size} idea${selectedIdeas.size > 1 ? 's' : ''} to My List`}
-            </button>
-          </div>
+          <button className="btn-primary" onClick={handleSaveToList} disabled={saveState === 'saving'}
+            style={{ width: '100%', justifyContent: 'center', gap: 6 }}>
+            {saveState === 'saving' && <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
+            {saveState === 'saved' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
+            {saveState === 'idle' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>}
+            {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved!' : saveState === 'error' ? 'Error — try again' : `Add ${selectedIdeas.size} idea${selectedIdeas.size > 1 ? 's' : ''} to My List`}
+          </button>
         ) : (
-          // Nothing selected — show copy as primary
-          <>
-            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
-              {narrativesState === 'done' ? 'Select ideas above to save them, or copy your full brief' : 'Jump on this trend — your audience is talking about it right now'}
+          <div style={{ textAlign: 'center', padding: '10px 0' }}>
+            <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>
+              {narrativesState === 'done' ? '☝️ Select ideas above to add them to My List' : 'Unlock narratives to surface content ideas'}
             </p>
-            <button className="btn-primary" onClick={handleCopyIdea} style={{ width: '100%', justifyContent: 'center' }}>
-              {copied ? (
-                <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>Copied!</>
-              ) : (
-                <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy content idea</>
-              )}
-            </button>
-          </>
+          </div>
         )}
       </div>
     </div>
