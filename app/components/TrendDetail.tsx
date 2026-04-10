@@ -70,6 +70,15 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number }) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [selectedIdeas, setSelectedIdeas] = useState<Set<string>>(new Set());
+
+  const toggleIdea = (idea: string) => {
+    setSelectedIdeas(prev => {
+      const next = new Set(prev);
+      next.has(idea) ? next.delete(idea) : next.add(idea);
+      return next;
+    });
+  };
   const [narrativesState, setNarrativesState] = useState<'idle' | 'loading' | 'done' | 'error'>(
     cachedNarratives ? 'done' : 'idle'
   );
@@ -90,6 +99,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   useEffect(() => {
     const currentUrl = trend.permalink || trend.url || '';
     const cardChanged = currentUrl !== stateUrl;
+
+    if (cardChanged) setSelectedIdeas(new Set());
 
     if (cachedNarratives) {
       // Always apply cache when available
@@ -360,22 +371,43 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                             💡 Content Ideas
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {ideas.map((idea: string, j: number) => (
-                              <div key={j} style={{
-                                fontSize: 12, color: 'var(--text-muted)', background: 'var(--accent-dim)',
-                                borderRadius: 6, padding: '7px 10px', lineHeight: 1.5,
-                                display: 'flex', gap: 8, alignItems: 'flex-start',
-                              }}>
-                                <span style={{ fontWeight: 700, color: cfg.color, flexShrink: 0 }}>{j + 1}.</span>
-                                <span>{(() => {
-                                  const colonIdx = idea.indexOf(':');
-                                  if (colonIdx > 0 && colonIdx < 20) {
-                                    return <><strong style={{ color: 'var(--text)' }}>{idea.slice(0, colonIdx)}</strong>{idea.slice(colonIdx)}</>;
-                                  }
-                                  return idea;
-                                })()}</span>
-                              </div>
-                            ))}
+                            {ideas.map((idea: string, j: number) => {
+                              const isSelected = selectedIdeas.has(idea);
+                              return (
+                                <div key={j}
+                                  onClick={() => toggleIdea(idea)}
+                                  style={{
+                                    fontSize: 12, color: 'var(--text-muted)',
+                                    background: isSelected ? `${cfg.border}18` : 'var(--accent-dim)',
+                                    border: `1px solid ${isSelected ? cfg.border : 'transparent'}`,
+                                    borderRadius: 6, padding: '7px 10px', lineHeight: 1.5,
+                                    display: 'flex', gap: 8, alignItems: 'flex-start',
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                  }}>
+                                  {/* Checkbox */}
+                                  <div style={{
+                                    width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                                    border: `2px solid ${isSelected ? cfg.border : 'var(--border-bright)'}`,
+                                    background: isSelected ? cfg.border : 'transparent',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transition: 'all 0.15s',
+                                  }}>
+                                    {isSelected && (
+                                      <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                                        <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <span>{(() => {
+                                    const colonIdx = idea.indexOf(':');
+                                    if (colonIdx > 0 && colonIdx < 20) {
+                                      return <><strong style={{ color: 'var(--text)' }}>{idea.slice(0, colonIdx)}</strong>{idea.slice(colonIdx)}</>;
+                                    }
+                                    return idea;
+                                  })()}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
