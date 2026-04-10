@@ -113,7 +113,6 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       );
       setSaveState('saved');
       setSelectedIdeas(new Map());
-      setTimeout(() => setSaveState('idle'), 2000);
     } catch {
       setSaveState('error');
       setTimeout(() => setSaveState('idle'), 2000);
@@ -475,20 +474,43 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
           <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.04em', fontWeight: 600 }}>POWERED BY AUDIENCE INTELLIGENCE ENGINE</span>
         </div>
 
-        {selectedIdeas.size > 0 ? (
+        {saveState === 'saved' ? (
+          // Post-save confirmation
+          <div style={{
+            width: '100%', padding: '12px 16px', borderRadius: 10,
+            background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#16a34a' }}>Ideas saved to My List</span>
+            </div>
+            <a href="/my-list" style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>
+              View My List →
+            </a>
+          </div>
+        ) : selectedIdeas.size > 0 ? (
+          // Active save button
           <button className="btn-primary" onClick={handleSaveToList} disabled={saveState === 'saving'}
             style={{ width: '100%', justifyContent: 'center', gap: 6 }}>
             {saveState === 'saving' && <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />}
-            {saveState === 'saved' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
             {saveState === 'idle' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>}
-            {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved!' : saveState === 'error' ? 'Error — try again' : `Add ${selectedIdeas.size} idea${selectedIdeas.size > 1 ? 's' : ''} to My List`}
+            {saveState === 'error' && '✕'}
+            {saveState === 'saving' ? 'Saving...' : saveState === 'error' ? 'Error — try again' : `Add ${selectedIdeas.size} idea${selectedIdeas.size > 1 ? 's' : ''} to My List`}
           </button>
         ) : (
-          <div style={{ textAlign: 'center', padding: '10px 0' }}>
-            <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>
-              {narrativesState === 'done' ? '☝️ Select ideas above to add them to My List' : 'Unlock narratives to surface content ideas'}
-            </p>
-          </div>
+          // Greyed-out inactive button
+          <button disabled style={{
+            width: '100%', padding: '12px 16px', borderRadius: 10,
+            background: 'var(--surface-2)', border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            cursor: 'default', opacity: 0.7,
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
+              {narrativesState === 'done' ? 'Select ideas above to save them' : 'Unlock narratives to surface ideas'}
+            </span>
+          </button>
         )}
       </div>
     </div>
