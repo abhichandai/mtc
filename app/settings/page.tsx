@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AppShell from '../components/AppShell';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { useTheme, type ThemePref } from '../components/ThemeProvider';
 
 const PLATFORMS = [
   { id: 'youtube', label: 'YouTube' },
@@ -47,6 +48,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 export default function SettingsPage() {
   const router = useRouter();
   const { isLoaded } = useAuth();
+  const { pref: themePref, setPref: setThemePref } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [brief, setBrief] = useState('');
@@ -305,6 +307,54 @@ export default function SettingsPage() {
           )}
           {saveState === 'saved' ? '✓ Saved' : saveState === 'error' ? 'Error — try again' : 'Save Changes'}
         </button>
+
+        {/* ── Divider ── */}
+        <div style={{ borderTop: '1px solid var(--border)', marginBottom: 40 }} />
+
+        {/* ── Appearance ── */}
+        <section style={{ marginBottom: 48 }}>
+          <h2 style={{
+            fontFamily: 'var(--font-ui)', fontWeight: 700, fontSize: 16,
+            color: 'var(--text)', marginBottom: 6, letterSpacing: '-0.02em',
+          }}>
+            Appearance
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', marginBottom: 16, lineHeight: 1.6 }}>
+            Choose your theme. Auto switches to dark at 8pm and back to light at 7am.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { id: 'auto', label: 'Auto', desc: 'Time-based' },
+              { id: 'light', label: 'Light', desc: 'Always light' },
+              { id: 'dark', label: 'Dark', desc: 'Always dark' },
+            ] as { id: ThemePref; label: string; desc: string }[]).map(opt => {
+              const active = themePref === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setThemePref(opt.id)}
+                  style={{
+                    flex: 1, padding: '12px 16px',
+                    borderRadius: 10,
+                    border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                    background: active ? 'var(--accent-dim)' : 'var(--surface)',
+                    fontFamily: 'var(--font-ui)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    textAlign: 'center' as const,
+                  }}
+                >
+                  <p style={{ fontSize: 14, fontWeight: active ? 700 : 600, color: active ? 'var(--accent)' : 'var(--text)', marginBottom: 2 }}>
+                    {opt.label}
+                  </p>
+                  <p style={{ fontSize: 11, color: active ? 'var(--accent)' : 'var(--text-dim)', fontWeight: 400 }}>
+                    {opt.desc}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* ── Divider ── */}
         <div style={{ borderTop: '1px solid var(--border)', marginBottom: 40 }} />
