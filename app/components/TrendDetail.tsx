@@ -400,7 +400,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                                   </div>
                                   <span>{(() => {
                                     const colonIdx = idea.indexOf(':');
-                                    if (colonIdx > 0 && colonIdx < 20) {
+                                    if (colonIdx > 0 && colonIdx < 40) {
                                       return <><strong style={{ color: 'var(--text)' }}>{idea.slice(0, colonIdx)}</strong>{idea.slice(colonIdx)}</>;
                                     }
                                     return idea;
