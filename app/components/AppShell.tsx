@@ -85,14 +85,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     : user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() ?? '?';
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'transparent' }}>
 
       {/* ── Sidebar ── */}
       <aside style={{
         width: sidebarW,
         minHeight: '100vh',
         background: 'var(--surface)',
-        borderRight: '1px solid var(--border)',
+        borderRight: '1px solid var(--surface-border)',
         display: 'flex',
         flexDirection: 'column',
         position: 'fixed',
@@ -100,6 +100,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         zIndex: 50,
         transition: 'width 0.22s cubic-bezier(0.4,0,0.2,1)',
         overflow: 'hidden',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
       }}>
 
         {/* Logo + collapse toggle */}

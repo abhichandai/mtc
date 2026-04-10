@@ -3,16 +3,16 @@
 
 /* ── Light mode (default) ─────────────────────────────────── */
 :root {
-  /* Page background — soft lavender gradient */
-  --bg-start: #F0EEFF;
-  --bg-mid:   #F8F5FF;
-  --bg-end:   #EEF2FF;
-  --bg: #F4F1FF;
+  /* Page background — richer lavender gradient */
+  --bg-start: #E8E2FF;
+  --bg-mid:   #EEE8FF;
+  --bg-end:   #E4ECFF;
+  --bg: #EAE4FF;
 
-  /* Glass card surfaces */
-  --surface: rgba(255, 255, 255, 0.72);
-  --surface-border: rgba(255, 255, 255, 0.95);
-  --surface-2: rgba(255, 255, 255, 0.45);
+  /* Glass card surfaces — lower opacity so bg shows through */
+  --surface: rgba(255, 255, 255, 0.58);
+  --surface-border: rgba(255, 255, 255, 0.90);
+  --surface-2: rgba(255, 255, 255, 0.35);
   --surface-solid: #FFFFFF;
 
   /* Borders */
