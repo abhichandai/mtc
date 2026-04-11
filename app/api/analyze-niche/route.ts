@@ -27,18 +27,71 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (profile?.cached_subreddits?.length && profile.cached_brief === brief) {
-          return NextResponse.json({
-            success: true,
-            subreddits: profile.cached_subreddits,
-            description: brief,
-            keywords,
-            cached: true,
-          });
+          // Check if user has enough feedback to warrant re-running Sonnet
+          const { count } = await supabase
+            .from('relevance_feedback')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId);
+
+          if ((count || 0) < 5) {
+            // Not enough feedback yet — safe to serve cache
+            return NextResponse.json({
+              success: true,
+              subreddits: profile.cached_subreddits,
+              description: brief,
+              keywords,
+              cached: true,
+            });
+          }
+          // Has feedback signal — fall through to re-run Sonnet with signal injected
         }
       }
     } catch { /* cache check is best-effort */ }
 
-    // Not cached — call Claude to compute subreddits
+    // Not cached — fetch feedback signal (if enough exists) then call Claude
+    let audienceSignalBlock = '';
+    if (userId) {
+      try {
+        const { data: feedbackRows } = await supabase
+          .from('relevance_feedback')
+          .select('post_title, subreddit, verdict')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (feedbackRows && feedbackRows.length >= 5) {
+          const upvoted = feedbackRows.filter(r => r.verdict === 'up');
+          const downvoted = feedbackRows.filter(r => r.verdict === 'down');
+
+          // Compute per-subreddit net scores
+          const subScores: Record<string, number> = {};
+          feedbackRows.forEach(r => {
+            subScores[r.subreddit] = (subScores[r.subreddit] || 0) + (r.verdict === 'up' ? 1 : -1);
+          });
+          const lowSignalSubs = Object.entries(subScores)
+            .filter(([, score]) => score <= -7)
+            .map(([sub]) => sub);
+
+          const upLines = upvoted.slice(0, 10).map(r => `- "${r.post_title}" (r/${r.subreddit})`).join('\n');
+          const downLines = downvoted.slice(0, 10).map(r => `- "${r.post_title}" (r/${r.subreddit})`).join('\n');
+
+          audienceSignalBlock = `
+AUDIENCE SIGNAL (from ${feedbackRows.length} user interactions — use this to refine subreddit selection):
+
+Topics this creator found relevant:
+${upLines || '(none yet)'}
+
+Topics they found irrelevant:
+${downLines || '(none yet)'}
+${lowSignalSubs.length > 0 ? `
+Low-signal subreddits (net -7 or worse dislikes): ${lowSignalSubs.map(s => `r/${s}`).join(', ')}
+→ Consider replacing these with more targeted alternatives that match the topics this creator cares about.
+` : ''}
+Use this signal to identify what specific topics and angles this creator's audience responds to, and prioritise communities likely to surface similar content.
+`;
+        }
+      } catch { /* feedback fetch is best-effort */ }
+    }
     let subreddits: string[] = ['entrepreneur', 'productivity', 'SideProject'];
     let description = brief;
 
@@ -51,7 +104,7 @@ export async function POST(req: NextRequest) {
           content: `You are helping a content creator find what their target audience is talking about on Reddit RIGHT NOW.
 
 Audience description: "${brief}"
-
+${audienceSignalBlock}
 Pick 6-8 subreddits where THIS specific audience actually hangs out. Prefer niche, specific communities over massive generic ones. For example:
 - "indie makers building SaaS tools" → indiehackers, SideProject, microsaas, startups (not just r/entrepreneur)
 - "busy moms into meal prep" → MealPrepSunday, instantpot, EatCheapAndHealthy (not just r/food)
