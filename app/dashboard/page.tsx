@@ -127,11 +127,13 @@ function TrendCardSkeleton() {
   );
 }
 
-function TrendCard({ trend, index, isSelected, onClick }: {
+function TrendCard({ trend, index, isSelected, onClick, feedback, onFeedback }: {
   trend: Trend;
   index: number;
   isSelected: boolean;
   onClick: () => void;
+  feedback?: 'up' | 'down' | null;
+  onFeedback: (verdict: 'up' | 'down') => void;
 }) {
   const tweets = trend.tweets || [];
   const isHot = (trend.score || 0) > 1000 || (trend.num_comments || 0) > 200;
@@ -142,7 +144,7 @@ function TrendCard({ trend, index, isSelected, onClick }: {
       onClick={onClick}
       style={{ padding: '20px' }}
     >
-      {/* Subreddit + rank */}
+      {/* Subreddit + rank + thumbs */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {isHot ? <div className="hot-dot" /> : <div className="live-dot" />}
@@ -154,13 +156,47 @@ function TrendCard({ trend, index, isSelected, onClick }: {
             r/{trend.subreddit || 'reddit'}
           </span>
         </div>
-        <span style={{
-          fontSize: 11, fontWeight: 700, color: 'var(--text-dim)',
-          background: 'var(--surface-2)',
-          borderRadius: 6, padding: '4px 8px',
-        }}>
-          #{index + 1}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Thumbs up */}
+          <button
+            onClick={e => { e.stopPropagation(); onFeedback('up'); }}
+            title="Relevant"
+            style={{
+              background: feedback === 'up' ? 'rgba(22,163,74,0.12)' : 'none',
+              border: `1px solid ${feedback === 'up' ? '#16a34a' : 'transparent'}`,
+              borderRadius: 6, padding: '3px 5px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
+              transition: 'all 0.15s',
+            }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill={feedback === 'up' ? '#16a34a' : 'none'} stroke={feedback === 'up' ? '#16a34a' : 'var(--text-dim)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+              <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+            </svg>
+          </button>
+          {/* Thumbs down */}
+          <button
+            onClick={e => { e.stopPropagation(); onFeedback('down'); }}
+            title="Not relevant"
+            style={{
+              background: feedback === 'down' ? 'rgba(220,38,38,0.1)' : 'none',
+              border: `1px solid ${feedback === 'down' ? '#dc2626' : 'transparent'}`,
+              borderRadius: 6, padding: '3px 5px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center',
+              transition: 'all 0.15s',
+            }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill={feedback === 'down' ? '#dc2626' : 'none'} stroke={feedback === 'down' ? '#dc2626' : 'var(--text-dim)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+              <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+            </svg>
+          </button>
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: 'var(--text-dim)',
+            background: 'var(--surface-2)',
+            borderRadius: 6, padding: '4px 8px', marginLeft: 2,
+          }}>
+            #{index + 1}
+          </span>
+        </div>
       </div>
 
       {/* Title */}
@@ -263,6 +299,8 @@ function DashboardContent() {
   const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, 'up' | 'down'>>({});
+  const [toast, setToast] = useState<{ message: string; type: 'up' | 'down' } | null>(null);
   // Cache narratives by post URL so they don't regenerate on every open
   const [narrativesCache, setNarrativesCache] = useState<Record<string, {
     narratives: Array<{headline: string; insight: string; angle?: string; type?: 'consensus' | 'contested' | 'contrarian'; signal?: string; content_ideas?: string[]}>;
@@ -286,6 +324,37 @@ function DashboardContent() {
       })
       .catch(() => router.push('/'));
   }, [brief, router]);
+
+  const handleFeedback = useCallback(async (trend: Trend, verdict: 'up' | 'down') => {
+    const key = trend.permalink || trend.url || trend.title || '';
+    if (!key) return;
+
+    // Optimistic update
+    setFeedbackMap(prev => ({ ...prev, [key]: verdict }));
+
+    // Show toast
+    const message = verdict === 'up'
+      ? '👍 Got it — more like this'
+      : '👎 Got it — less like this';
+    setToast({ message, type: verdict });
+    setTimeout(() => setToast(null), 3000);
+
+    // Persist to Supabase
+    try {
+      await fetch('/api/relevance-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          post_url: trend.url || trend.permalink || '',
+          post_title: trend.title || '',
+          subreddit: trend.subreddit || '',
+          verdict,
+        }),
+      });
+    } catch {
+      // silently fail — optimistic state stays
+    }
+  }, []);
 
   const fetchTrends = useCallback(async (forceRefresh = false) => {
     if (!brief) return;
@@ -507,6 +576,8 @@ function DashboardContent() {
                   index={i}
                   isSelected={selectedTrend === trend}
                   onClick={() => setSelectedTrend(selectedTrend === trend ? null : trend)}
+                  feedback={feedbackMap[trend.permalink || trend.url || trend.title || ''] ?? null}
+                  onFeedback={(verdict) => handleFeedback(trend, verdict)}
                 />
               ))}
             </div>
@@ -551,7 +622,25 @@ function DashboardContent() {
         </>
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+          background: toast.type === 'up' ? 'rgba(22,163,74,0.95)' : 'rgba(220,38,38,0.95)',
+          color: '#fff', fontFamily: 'var(--font-ui)', fontWeight: 600, fontSize: 14,
+          padding: '12px 20px', borderRadius: 10,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+          zIndex: 100, pointerEvents: 'none',
+          animation: 'fadeInUp 0.2s ease',
+        }}>
+          {toast.message}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+      `}</style>
     </div>
     </AppShell>
   );
