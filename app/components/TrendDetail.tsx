@@ -63,12 +63,14 @@ function isRedditPost(trend: Trend): boolean {
   return !!(trend.title && trend.subreddit);
 }
 
-export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrativesCached, audienceBrief }: {
+export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrativesCached, audienceBrief, feedback, onFeedback }: {
   trend: Trend;
   onClose: () => void;
   cachedNarratives?: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number };
   onNarrativesCached?: (url: string, data: { narratives: Narrative[]; post_body: string; comment_count: number; generated_at: number }) => void;
   audienceBrief?: string;
+  feedback?: 'up' | 'down' | null;
+  onFeedback?: (verdict: 'up' | 'down') => void;
 }) {
   const [selectedIdeas, setSelectedIdeas] = useState<Map<string, Narrative>>(new Map());
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -216,11 +218,31 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>· {timeAgo(trend.created_utc)}</span>
           )}
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {onFeedback && (
+            <>
+              <button onClick={() => onFeedback('up')} title="Relevant"
+                style={{ background: feedback === 'up' ? 'rgba(22,163,74,0.12)' : 'none', border: `1px solid ${feedback === 'up' ? '#16a34a' : 'transparent'}`, borderRadius: 6, padding: '3px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all 0.15s' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill={feedback === 'up' ? '#16a34a' : 'none'} stroke={feedback === 'up' ? '#16a34a' : 'var(--text-dim)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+                  <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                </svg>
+              </button>
+              <button onClick={() => onFeedback('down')} title="Not relevant"
+                style={{ background: feedback === 'down' ? 'rgba(220,38,38,0.1)' : 'none', border: `1px solid ${feedback === 'down' ? '#dc2626' : 'transparent'}`, borderRadius: 6, padding: '3px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all 0.15s' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill={feedback === 'down' ? '#dc2626' : 'none'} stroke={feedback === 'down' ? '#dc2626' : 'var(--text-dim)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+                  <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                </svg>
+              </button>
+            </>
+          )}
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center', marginLeft: 4 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Scrollable body */}

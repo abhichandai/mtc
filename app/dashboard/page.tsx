@@ -632,6 +632,8 @@ function DashboardContent() {
               cachedNarratives={narrativesCache[selectedTrend.permalink || selectedTrend.url || '']}
               onNarrativesCached={(url, data) => setNarrativesCache(prev => ({ ...prev, [url]: data }))}
               audienceBrief={brief}
+              feedback={feedbackMap[selectedTrend.permalink || selectedTrend.url || selectedTrend.title || ''] ?? null}
+              onFeedback={(verdict) => handleFeedback(selectedTrend, verdict)}
             />
           </div>
         </>
