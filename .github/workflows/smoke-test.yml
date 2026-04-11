@@ -1,0 +1,48 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+
+jobs:
+  smoke-test:
+    name: Run smoke tests (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set target URL
+        id: set-url
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "BASE_URL=https://app.makethiscontent.com" >> $GITHUB_OUTPUT
+            echo "ENV=production" >> $GITHUB_OUTPUT
+          else
+            echo "BASE_URL=https://mtc-git-staging-abhichandais-projects.vercel.app" >> $GITHUB_OUTPUT
+            echo "ENV=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for Vercel deployment
+        run: |
+          URL="${{ steps.set-url.outputs.BASE_URL }}"
+          echo "Waiting for Vercel to finish deploying to ${{ steps.set-url.outputs.ENV }}..."
+          for i in $(seq 1 24); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+            if [ "$STATUS" != "502" ] && [ "$STATUS" != "000" ] && [ "$STATUS" != "503" ]; then
+              echo "Deployment ready (HTTP $STATUS after ~${i}x15s)"
+              break
+            fi
+            if [ "$i" = "24" ]; then
+              echo "Timed out waiting for deployment after 6 minutes"
+              exit 1
+            fi
+            echo "  Attempt $i/24: not ready yet (HTTP $STATUS) — retrying in 15s..."
+            sleep 15
+          done
+
+      - name: Run smoke tests
+        run: node scripts/smoke-test.mjs "${{ steps.set-url.outputs.BASE_URL }}"
