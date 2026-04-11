@@ -27,23 +27,13 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (profile?.cached_subreddits?.length && profile.cached_brief === brief) {
-          // Check if user has enough feedback to warrant re-running Sonnet
-          const { count } = await supabase
-            .from('relevance_feedback')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', userId);
-
-          if ((count || 0) < 5) {
-            // Not enough feedback yet — safe to serve cache
-            return NextResponse.json({
-              success: true,
-              subreddits: profile.cached_subreddits,
-              description: brief,
-              keywords,
-              cached: true,
-            });
-          }
-          // Has feedback signal — fall through to re-run Sonnet with signal injected
+          return NextResponse.json({
+            success: true,
+            subreddits: profile.cached_subreddits,
+            description: brief,
+            keywords,
+            cached: true,
+          });
         }
       }
     } catch { /* cache check is best-effort */ }
