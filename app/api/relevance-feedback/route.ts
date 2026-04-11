@@ -30,7 +30,30 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// GET /api/relevance-feedback — fetch all feedback for the current user
+// DELETE /api/relevance-feedback?post_url=<url> — remove feedback for a post
+export async function DELETE(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const post_url = req.nextUrl.searchParams.get('post_url');
+  if (!post_url) {
+    return NextResponse.json({ error: 'post_url required' }, { status: 400 });
+  }
+
+  const { error } = await supabase
+    .from('relevance_feedback')
+    .delete()
+    .eq('user_id', userId)
+    .eq('post_url', post_url);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
 export async function GET() {
   const { userId } = await auth();
   if (!userId) {

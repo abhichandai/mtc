@@ -329,32 +329,47 @@ function DashboardContent() {
     const key = trend.permalink || trend.url || trend.title || '';
     if (!key) return;
 
-    // Optimistic update
-    setFeedbackMap(prev => ({ ...prev, [key]: verdict }));
+    const existing = feedbackMap[key];
+    const isUndo = existing === verdict;
 
-    // Show toast
-    const message = verdict === 'up'
-      ? '👍 Got it — more like this'
-      : '👎 Got it — less like this';
-    setToast({ message, type: verdict });
+    // Optimistic update — clear if same verdict, set if new/different
+    setFeedbackMap(prev => {
+      const next = { ...prev };
+      if (isUndo) delete next[key];
+      else next[key] = verdict;
+      return next;
+    });
+
+    // Toast
+    if (isUndo) {
+      setToast({ message: '↩️ Feedback removed', type: verdict });
+    } else {
+      setToast({ message: verdict === 'up' ? '👍 Got it — more like this' : '👎 Got it — less like this', type: verdict });
+    }
     setTimeout(() => setToast(null), 3000);
 
-    // Persist to Supabase
+    // Persist
     try {
-      await fetch('/api/relevance-feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          post_url: trend.url || trend.permalink || '',
-          post_title: trend.title || '',
-          subreddit: trend.subreddit || '',
-          verdict,
-        }),
-      });
+      if (isUndo) {
+        await fetch(`/api/relevance-feedback?post_url=${encodeURIComponent(trend.url || trend.permalink || '')}`, {
+          method: 'DELETE',
+        });
+      } else {
+        await fetch('/api/relevance-feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            post_url: trend.url || trend.permalink || '',
+            post_title: trend.title || '',
+            subreddit: trend.subreddit || '',
+            verdict,
+          }),
+        });
+      }
     } catch {
-      // silently fail — optimistic state stays
+      // silently fail
     }
-  }, []);
+  }, [feedbackMap]);
 
   const fetchTrends = useCallback(async (forceRefresh = false) => {
     if (!brief) return;
