@@ -25,33 +25,31 @@ console.log(`   Backend:  ${BACKEND_URL}\n`);
 const tests = [
   // Frontend API routes
   {
+    // Clerk middleware intercepts unauthenticated requests and returns HTML 401
+    // We just verify the status code — JSON shape is tested on routes we control directly
     name: 'GET /api/profile — returns 401 without auth',
     url: `${BASE_URL}/api/profile`,
     method: 'GET',
     expectedStatus: 401,
-    requiresJson: true,
   },
   {
     name: 'GET /api/saved-ideas — returns 401 without auth',
     url: `${BASE_URL}/api/saved-ideas`,
     method: 'GET',
     expectedStatus: 401,
-    requiresJson: true,
   },
   {
     name: 'GET /api/relevance-feedback — returns 401 without auth',
     url: `${BASE_URL}/api/relevance-feedback`,
     method: 'GET',
     expectedStatus: 401,
-    requiresJson: true,
   },
   {
-    name: 'POST /api/analyze-niche — returns 400 with empty keywords',
+    name: 'POST /api/analyze-niche — returns 401 without auth',
     url: `${BASE_URL}/api/analyze-niche`,
     method: 'POST',
     body: { keywords: [] },
-    expectedStatus: 400,
-    requiresJson: true,
+    expectedStatus: 401,
   },
   {
     name: 'POST /api/get-narratives — returns 401 without auth',
@@ -59,14 +57,12 @@ const tests = [
     method: 'POST',
     body: { postUrl: 'https://reddit.com/r/test/comments/smoke', subreddits: ['test'] },
     expectedStatus: 401,
-    requiresJson: true,
   },
   {
-    name: 'GET /api/reddit-for-trend — returns 400 with no subreddits param',
+    name: 'GET /api/reddit-for-trend — returns 401 without auth',
     url: `${BASE_URL}/api/reddit-for-trend`,
     method: 'GET',
-    expectedStatus: 400,
-    requiresJson: true,
+    expectedStatus: 401,
   },
 
   // Backend routes
