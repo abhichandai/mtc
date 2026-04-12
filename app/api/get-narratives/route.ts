@@ -4,7 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
 
 // Raise Vercel function timeout to 60s (max on Hobby plan with Fluid Compute)
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://143.198.46.229:5000';
