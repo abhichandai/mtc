@@ -38,14 +38,16 @@ export default function LandingPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(145deg, var(--bg-start) 0%, var(--bg-mid) 55%, var(--bg-end) 100%)', display: 'flex', flexDirection: 'column' }}>
 
       {/* Nav */}
       <nav style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 48px', height: 64,
         borderBottom: '1px solid var(--border)',
-        background: 'var(--bg)',
+        background: 'var(--header-bg)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         position: 'sticky', top: 0, zIndex: 50,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -87,15 +89,14 @@ export default function LandingPage() {
             New
           </span>
           <span style={{ fontSize: 13, color: 'var(--accent)', fontFamily: 'var(--font-ui)', fontWeight: 500 }}>
-            Self-improving intelligence — gets smarter the more you use it
+            True Audience Intelligence for content creators
           </span>
         </div>
 
         {/* Headline */}
         <h1 style={{ fontFamily: 'var(--font-ui)', fontWeight: 800, fontSize: 'clamp(36px, 5vw, 60px)', lineHeight: 1.08, letterSpacing: '-0.035em', color: 'var(--text)', marginBottom: 20, maxWidth: 800 }}>
-          Know Exactly What Your{' '}
-          <span style={{ color: 'var(--accent)' }}>Audience Wants</span>
-          {' '}to See
+          Create Content Your Audience{' '}
+          <span style={{ color: 'var(--accent)' }}>Wants to See</span>
         </h1>
 
         {/* Subheading */}
@@ -149,7 +150,7 @@ export default function LandingPage() {
       </main>
 
       {/* Input section */}
-      <section style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)', padding: '72px 24px 80px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <section style={{ background: 'transparent', borderTop: '1px solid var(--border)', padding: '72px 24px 80px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <h2 style={{ fontFamily: 'var(--font-ui)', fontWeight: 800, fontSize: 'clamp(24px, 3vw, 36px)', letterSpacing: '-0.03em', color: 'var(--text)', marginBottom: 8, textAlign: 'center' }}>
           Try it now — describe your audience
         </h2>
