@@ -61,6 +61,11 @@ export default function SettingsPage() {
   const [resetting, setResetting] = useState(false);
   const [resetDone, setResetDone] = useState(false);
 
+  // Reset feedback state
+  const [resettingFeedback, setResettingFeedback] = useState(false);
+  const [feedbackResetDone, setFeedbackResetDone] = useState(false);
+  const [confirmingFeedbackReset, setConfirmingFeedbackReset] = useState(false);
+
   useEffect(() => {
     if (!isLoaded) return;
     async function loadProfile() {
@@ -113,6 +118,21 @@ export default function SettingsPage() {
     } catch {
       setSaveState('error');
       setTimeout(() => setSaveState('idle'), 2500);
+    }
+  };
+
+  const handleResetFeedback = async () => {
+    if (resettingFeedback) return;
+    setResettingFeedback(true);
+    try {
+      await fetch('/api/relevance-feedback', { method: 'DELETE' });
+      // Clear dashboard localStorage cache so next load runs fresh analyze-niche
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('mtc_trends_')) localStorage.removeItem(key);
+      });
+      setFeedbackResetDone(true);
+    } finally {
+      setResettingFeedback(false);
     }
   };
 
@@ -417,6 +437,110 @@ export default function SettingsPage() {
                 }}
               >
                 {resetting ? 'Resetting...' : 'Reset onboarding'}
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* ── Divider ── */}
+        <div style={{ borderTop: '1px solid var(--border)', marginBottom: 40, marginTop: 40 }} />
+
+        {/* ── Audience Feedback Reset ── */}
+        <section>
+          <h2 style={{
+            fontFamily: 'var(--font-ui)', fontWeight: 700, fontSize: 16,
+            color: 'var(--text)', marginBottom: 6, letterSpacing: '-0.02em',
+          }}>
+            Audience Intelligence
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', marginBottom: 16, lineHeight: 1.6 }}>
+            Your thumbs up / down ratings train the AI to surface better topics over time. Reset this if your feedback is pulling results in the wrong direction.
+          </p>
+
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 12, padding: '16px 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+          }}>
+            <div>
+              <p style={{ fontFamily: 'var(--font-ui)', fontWeight: 600, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>
+                Reset feedback signal
+              </p>
+              <p style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-dim)' }}>
+                {feedbackResetDone
+                  ? 'Done — your next dashboard refresh will start fresh.'
+                  : 'Clears all thumbs up / down ratings and resets the AI signal.'}
+              </p>
+            </div>
+
+            {feedbackResetDone ? (
+              <button
+                disabled
+                style={{
+                  padding: '8px 16px', borderRadius: 8, flexShrink: 0,
+                  background: 'var(--accent-dim)',
+                  border: '1.5px solid var(--accent)',
+                  color: 'var(--accent)',
+                  fontSize: 13, fontWeight: 700,
+                  fontFamily: 'var(--font-ui)',
+                  cursor: 'default',
+                  whiteSpace: 'nowrap' as const,
+                }}
+              >
+                ✓ Reset
+              </button>
+            ) : confirmingFeedbackReset ? (
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  onClick={() => setConfirmingFeedbackReset(false)}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    background: 'var(--surface-2)',
+                    border: '1.5px solid var(--border)',
+                    color: 'var(--text-muted)',
+                    fontSize: 13, fontWeight: 600,
+                    fontFamily: 'var(--font-ui)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap' as const,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetFeedback}
+                  disabled={resettingFeedback}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    background: '#ef4444',
+                    border: '1.5px solid #ef4444',
+                    color: '#fff',
+                    fontSize: 13, fontWeight: 700,
+                    fontFamily: 'var(--font-ui)',
+                    cursor: resettingFeedback ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap' as const,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {resettingFeedback ? 'Resetting...' : 'Yes, reset'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmingFeedbackReset(true)}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, flexShrink: 0,
+                  background: 'var(--surface-2)',
+                  border: '1.5px solid var(--border)',
+                  color: 'var(--text-muted)',
+                  fontSize: 13, fontWeight: 600,
+                  fontFamily: 'var(--font-ui)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap' as const,
+                  transition: 'all 0.15s',
+                }}
+              >
+                Reset feedback
               </button>
             )}
           </div>

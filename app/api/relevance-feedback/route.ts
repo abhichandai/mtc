@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE /api/relevance-feedback?post_url=<url> — remove feedback for a post
+// DELETE /api/relevance-feedback — remove ALL feedback for the user (reset)
 export async function DELETE(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -38,15 +39,15 @@ export async function DELETE(req: NextRequest) {
   }
 
   const post_url = req.nextUrl.searchParams.get('post_url');
-  if (!post_url) {
-    return NextResponse.json({ error: 'post_url required' }, { status: 400 });
-  }
 
-  const { error } = await supabase
+  const query = supabase
     .from('relevance_feedback')
     .delete()
-    .eq('user_id', userId)
-    .eq('post_url', post_url);
+    .eq('user_id', userId);
+
+  const { error } = post_url
+    ? await query.eq('post_url', post_url)
+    : await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
