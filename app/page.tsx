@@ -38,7 +38,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(145deg, var(--bg-start) 0%, var(--bg-mid) 55%, var(--bg-end) 100%)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, var(--bg-start) 0%, var(--bg-mid) 45%, var(--bg-end) 100%)', backgroundAttachment: 'fixed', display: 'flex', flexDirection: 'column' }}>
 
       {/* Nav */}
       <nav style={{
@@ -126,7 +126,7 @@ export default function LandingPage() {
         </div>
 
         {/* Product screenshot */}
-        <div style={{ width: '100%', maxWidth: 1080, borderRadius: '16px 16px 0 0', border: '1.5px solid var(--border)', borderBottom: 'none', overflow: 'hidden', boxShadow: '0 -4px 60px rgba(124,58,237,0.10)', background: 'var(--surface)' }}>
+        <div style={{ width: '100%', maxWidth: 1080, borderRadius: '16px 16px 0 0', border: '1px solid rgba(124,58,237,0.15)', borderBottom: 'none', overflow: 'hidden', boxShadow: '0 -8px 60px rgba(80,50,140,0.20), 0 -2px 20px rgba(80,50,140,0.10)', background: 'var(--surface)' }}>
           {/* Fake browser bar */}
           <div style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ display: 'flex', gap: 6 }}>
