@@ -64,6 +64,7 @@ export default function SettingsPage() {
   // Reset feedback state
   const [resettingFeedback, setResettingFeedback] = useState(false);
   const [feedbackResetDone, setFeedbackResetDone] = useState(false);
+  const [confirmingFeedbackReset, setConfirmingFeedbackReset] = useState(false);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -472,23 +473,76 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            <button
-              onClick={feedbackResetDone ? undefined : handleResetFeedback}
-              disabled={resettingFeedback || feedbackResetDone}
-              style={{
-                padding: '8px 16px', borderRadius: 8, flexShrink: 0,
-                background: feedbackResetDone ? 'var(--accent-dim)' : 'var(--surface-2)',
-                border: `1.5px solid ${feedbackResetDone ? 'var(--accent)' : 'var(--border)'}`,
-                color: feedbackResetDone ? 'var(--accent)' : 'var(--text-muted)',
-                fontSize: 13, fontWeight: feedbackResetDone ? 700 : 600,
-                fontFamily: 'var(--font-ui)',
-                cursor: (resettingFeedback || feedbackResetDone) ? 'default' : 'pointer',
-                whiteSpace: 'nowrap' as const,
-                transition: 'all 0.15s',
-              }}
-            >
-              {resettingFeedback ? 'Resetting...' : feedbackResetDone ? '✓ Reset' : 'Reset feedback'}
-            </button>
+            {feedbackResetDone ? (
+              <button
+                disabled
+                style={{
+                  padding: '8px 16px', borderRadius: 8, flexShrink: 0,
+                  background: 'var(--accent-dim)',
+                  border: '1.5px solid var(--accent)',
+                  color: 'var(--accent)',
+                  fontSize: 13, fontWeight: 700,
+                  fontFamily: 'var(--font-ui)',
+                  cursor: 'default',
+                  whiteSpace: 'nowrap' as const,
+                }}
+              >
+                ✓ Reset
+              </button>
+            ) : confirmingFeedbackReset ? (
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  onClick={() => setConfirmingFeedbackReset(false)}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    background: 'var(--surface-2)',
+                    border: '1.5px solid var(--border)',
+                    color: 'var(--text-muted)',
+                    fontSize: 13, fontWeight: 600,
+                    fontFamily: 'var(--font-ui)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap' as const,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetFeedback}
+                  disabled={resettingFeedback}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    background: '#ef4444',
+                    border: '1.5px solid #ef4444',
+                    color: '#fff',
+                    fontSize: 13, fontWeight: 700,
+                    fontFamily: 'var(--font-ui)',
+                    cursor: resettingFeedback ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap' as const,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {resettingFeedback ? 'Resetting...' : 'Yes, reset'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmingFeedbackReset(true)}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, flexShrink: 0,
+                  background: 'var(--surface-2)',
+                  border: '1.5px solid var(--border)',
+                  color: 'var(--text-muted)',
+                  fontSize: 13, fontWeight: 600,
+                  fontFamily: 'var(--font-ui)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap' as const,
+                  transition: 'all 0.15s',
+                }}
+              >
+                Reset feedback
+              </button>
+            )}
           </div>
         </section>
       </main>
