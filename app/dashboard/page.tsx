@@ -487,7 +487,7 @@ function DashboardContent() {
             </svg>
             Refresh
           </button>
-          <button className="btn-ghost" onClick={() => router.push('/')} style={{ fontSize: 12, padding: '6px 12px' }}>
+          <button className="btn-ghost" onClick={() => router.push('/settings')} style={{ fontSize: 12, padding: '6px 12px' }}>
             Change niche
           </button>
         </div>
