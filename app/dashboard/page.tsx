@@ -319,10 +319,10 @@ function DashboardContent() {
         if (profileBrief) {
           setBrief(profileBrief);
         } else {
-          router.push('/');
+          router.push('/onboarding');
         }
       })
-      .catch(() => router.push('/'));
+      .catch(() => router.push('/onboarding'));
   }, [brief, router]);
 
   const handleFeedback = useCallback(async (trend: Trend, verdict: 'up' | 'down') => {
