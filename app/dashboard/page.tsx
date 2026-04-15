@@ -45,6 +45,46 @@ function saveCache(brief: string, result: ApiResult, subreddits: string[]) {
 
 function clearCache(brief: string) {
   try { localStorage.removeItem(getCacheKey(brief)); } catch { /* ignore */ }
+  clearAllNarrativeCaches();
+}
+
+// ─── NARRATIVE CACHE (localStorage) ──────────────────────────────────────────
+const NARRATIVE_KEY_PREFIX = 'mtc_narrative_';
+
+type NarrativeData = {
+  narratives: Array<{headline: string; insight: string; angle?: string; type?: 'consensus' | 'contested' | 'contrarian'; signal?: string; content_ideas?: string[]}>;
+  post_body: string;
+  comment_count: number;
+  generated_at: number;
+};
+
+function loadAllNarrativeCaches(): Record<string, NarrativeData> {
+  try {
+    const result: Record<string, NarrativeData> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(NARRATIVE_KEY_PREFIX)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      result[key.slice(NARRATIVE_KEY_PREFIX.length)] = JSON.parse(raw);
+    }
+    return result;
+  } catch { return {}; }
+}
+
+function saveNarrativeToCache(url: string, data: NarrativeData) {
+  try { localStorage.setItem(`${NARRATIVE_KEY_PREFIX}${url.slice(0, 150)}`, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
+function clearAllNarrativeCaches() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(NARRATIVE_KEY_PREFIX)) keys.push(key);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+  } catch { /* ignore */ }
 }
 
 function timeAgoMs(ts: number): string {
@@ -301,13 +341,10 @@ function DashboardContent() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const [feedbackMap, setFeedbackMap] = useState<Record<string, 'up' | 'down'>>({});
   const [toast, setToast] = useState<{ message: string; type: 'up' | 'down' } | null>(null);
-  // Cache narratives by post URL so they don't regenerate on every open
-  const [narrativesCache, setNarrativesCache] = useState<Record<string, {
-    narratives: Array<{headline: string; insight: string; angle?: string; type?: 'consensus' | 'contested' | 'contrarian'; signal?: string; content_ideas?: string[]}>;
-    post_body: string;
-    comment_count: number;
-    generated_at: number;
-  }>>({});
+  // Cache narratives by post URL — seeded from localStorage so they survive navigation
+  const [narrativesCache, setNarrativesCache] = useState<Record<string, NarrativeData>>(() => {
+    try { return loadAllNarrativeCaches(); } catch { return {}; }
+  });
 
   // If no brief in URL, load from profile
   useEffect(() => {
@@ -389,6 +426,7 @@ function DashboardContent() {
     setLoading(true);
     setError(null);
     setNarrativesCache({});
+    clearAllNarrativeCaches();
     try {
       let subreddits: string[];
       let nicheDescription: string;
@@ -630,7 +668,7 @@ function DashboardContent() {
               trend={selectedTrend}
               onClose={handleClosePanel}
               cachedNarratives={narrativesCache[selectedTrend.permalink || selectedTrend.url || '']}
-              onNarrativesCached={(url, data) => setNarrativesCache(prev => ({ ...prev, [url]: data }))}
+              onNarrativesCached={(url, data) => { saveNarrativeToCache(url, data); setNarrativesCache(prev => ({ ...prev, [url]: data })); }}
               audienceBrief={brief}
               feedback={feedbackMap[selectedTrend.permalink || selectedTrend.url || selectedTrend.title || ''] ?? null}
               onFeedback={(verdict) => handleFeedback(selectedTrend, verdict)}
