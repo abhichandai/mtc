@@ -45,7 +45,6 @@ function saveCache(brief: string, result: ApiResult, subreddits: string[]) {
 
 function clearCache(brief: string) {
   try { localStorage.removeItem(getCacheKey(brief)); } catch { /* ignore */ }
-  clearAllNarrativeCaches();
 }
 
 // ─── NARRATIVE CACHE (localStorage) ──────────────────────────────────────────
@@ -426,7 +425,6 @@ function DashboardContent() {
     setLoading(true);
     setError(null);
     setNarrativesCache({});
-    clearAllNarrativeCaches();
     try {
       let subreddits: string[];
       let nicheDescription: string;
