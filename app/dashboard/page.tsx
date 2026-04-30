@@ -424,7 +424,6 @@ function DashboardContent() {
 
     setLoading(true);
     setError(null);
-    setNarrativesCache({});
     try {
       let subreddits: string[];
       let nicheDescription: string;
