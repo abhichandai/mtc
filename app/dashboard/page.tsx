@@ -417,7 +417,7 @@ function DashboardContent() {
     // Persist
     try {
       if (isUndo) {
-        await fetch(`/api/relevance-feedback?post_url=${encodeURIComponent(trend.url || trend.permalink || '')}`, {
+        await fetch(`/api/relevance-feedback?post_url=${encodeURIComponent(trend.permalink || trend.url || '')}`, {
           method: 'DELETE',
         });
       } else {
