@@ -354,6 +354,21 @@ function DashboardContent() {
     try { return loadAllNarrativeCaches(); } catch { return {}; }
   });
 
+  // Seed feedbackMap from Supabase on mount — so thumbs survive navigation
+  useEffect(() => {
+    fetch('/api/relevance-feedback')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.feedback) return;
+        const map: Record<string, 'up' | 'down'> = {};
+        for (const item of data.feedback) {
+          if (item.post_url && item.verdict) map[item.post_url] = item.verdict;
+        }
+        setFeedbackMap(map);
+      })
+      .catch(() => { /* silently fail — thumbs just won't show */ });
+  }, []);
+
   // If no brief in URL, load from profile
   useEffect(() => {
     if (brief) return;
