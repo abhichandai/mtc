@@ -166,13 +166,14 @@ function TrendCardSkeleton() {
   );
 }
 
-function TrendCard({ trend, index, isSelected, onClick, feedback, onFeedback }: {
+function TrendCard({ trend, index, isSelected, onClick, feedback, onFeedback, isUnlocked }: {
   trend: Trend;
   index: number;
   isSelected: boolean;
   onClick: () => void;
   feedback?: 'up' | 'down' | null;
   onFeedback: (verdict: 'up' | 'down') => void;
+  isUnlocked?: boolean;
 }) {
   const tweets = trend.tweets || [];
   const isHot = (trend.score || 0) > 1000 || (trend.num_comments || 0) > 200;
@@ -181,7 +182,7 @@ function TrendCard({ trend, index, isSelected, onClick, feedback, onFeedback }: 
     <div
       className={`card animate-fade-up stagger-${Math.min(index + 1, 6)} ${isSelected ? 'card-selected' : ''}`}
       onClick={onClick}
-      style={{ padding: '20px' }}
+      style={{ padding: '20px', borderLeft: isUnlocked ? '3px solid #16a34a' : undefined }}
     >
       {/* Subreddit + rank + thumbs */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -228,6 +229,14 @@ function TrendCard({ trend, index, isSelected, onClick, feedback, onFeedback }: 
               <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
             </svg>
           </button>
+          {isUnlocked && (
+            <span title="Narratives unlocked" style={{ display: 'flex', alignItems: 'center', marginLeft: 2 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+              </svg>
+            </span>
+          )}
           <span style={{
             fontSize: 11, fontWeight: 700, color: 'var(--text-dim)',
             background: 'var(--surface-2)',
@@ -628,6 +637,7 @@ function DashboardContent() {
                   onClick={() => setSelectedTrend(selectedTrend === trend ? null : trend)}
                   feedback={feedbackMap[trend.permalink || trend.url || trend.title || ''] ?? null}
                   onFeedback={(verdict) => handleFeedback(trend, verdict)}
+                  isUnlocked={!!(narrativesCache[trend.permalink || trend.url || ''])}
                 />
               ))}
             </div>
