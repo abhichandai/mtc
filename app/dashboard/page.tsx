@@ -362,7 +362,13 @@ function DashboardContent() {
         if (!data.feedback) return;
         const map: Record<string, 'up' | 'down'> = {};
         for (const item of data.feedback) {
-          if (item.post_url && item.verdict) map[item.post_url] = item.verdict;
+          if (!item.post_url || !item.verdict) continue;
+          // Index under full URL
+          map[item.post_url] = item.verdict;
+          // Also index under relative path — trend.permalink is relative (/r/...)
+          // but post_url stored in Supabase may be the full URL
+          const relative = item.post_url.replace('https://www.reddit.com', '');
+          if (relative !== item.post_url) map[relative] = item.verdict;
         }
         setFeedbackMap(map);
       })
@@ -419,7 +425,7 @@ function DashboardContent() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            post_url: trend.url || trend.permalink || '',
+            post_url: trend.permalink || trend.url || '',
             post_title: trend.title || '',
             subreddit: trend.subreddit || '',
             verdict,
