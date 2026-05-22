@@ -65,17 +65,36 @@ function timeAgo(iso?: string): string {
   return `${h}h ago`;
 }
 
+// ─── Relevance ───────────────────────────────────────────────────────────────
+type Fit = 'high' | 'medium' | 'low';
+type RelevanceScore = { fit: Fit; bridge: string };
+
+function fitStyle(fit: Fit): { dot: string; label: string; labelColor: string; bg: string } {
+  switch (fit) {
+    case 'high':   return { dot: 'var(--accent)',   label: 'High fit',   labelColor: 'var(--accent)',     bg: 'var(--accent-dim)' };
+    case 'medium': return { dot: 'var(--text-muted)', label: 'Medium fit', labelColor: 'var(--text-muted)', bg: 'var(--surface-2)' };
+    default:       return { dot: 'var(--text-dim)',  label: 'Low fit',    labelColor: 'var(--text-dim)',   bg: 'var(--surface-2)' };
+  }
+}
+
 // ─── Pulse Card ──────────────────────────────────────────────────────────────
-function PulseCard({ trend, rank }: { trend: PulseTrend; rank: number }) {
+function PulseCard({ trend, rank, relevance, relevanceLoading }: {
+  trend: PulseTrend;
+  rank: number;
+  relevance?: RelevanceScore;
+  relevanceLoading: boolean;
+}) {
   const [hover, setHover] = useState(false);
   const category = trend.categories?.[0] || 'Trending';
   const breakdown = (trend.trend_breakdown || []).slice(0, 3);
+  const isLowFit = relevance?.fit === 'low';
 
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
+        opacity: isLowFit ? 0.72 : 1,
         background: 'var(--surface)',
         border: `1px solid ${hover ? 'var(--border-bright)' : 'var(--surface-border)'}`,
         borderRadius: 12,
@@ -84,7 +103,7 @@ function PulseCard({ trend, rank }: { trend: PulseTrend; rank: number }) {
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
         transform: hover ? 'translateY(-2px)' : 'none',
-        transition: 'transform 0.18s, box-shadow 0.18s, border-color 0.18s',
+        transition: 'transform 0.18s, box-shadow 0.18s, border-color 0.18s, opacity 0.2s',
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
@@ -160,16 +179,45 @@ function PulseCard({ trend, rank }: { trend: PulseTrend; rank: number }) {
         </div>
       )}
 
-      {/* Placeholder footer — Chunks 2 & 4 land here */}
-      <div style={{
-        borderTop: '1px dashed var(--border)', paddingTop: 11, marginTop: 2,
-        display: 'flex', alignItems: 'center', gap: 7,
-      }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      {/* Relevance signal (Chunk 4) */}
+      <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 11, marginTop: 2 }}>
+        {relevance ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <span style={{
+              alignSelf: 'flex-start',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)',
+              letterSpacing: '0.02em', color: fitStyle(relevance.fit).labelColor,
+              background: fitStyle(relevance.fit).bg, padding: '3px 9px', borderRadius: 100,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
+              {fitStyle(relevance.fit).label}
+            </span>
+            {relevance.bridge && (
+              <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
+                {relevance.bridge}
+              </span>
+            )}
+          </div>
+        ) : relevanceLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="pulse-shimmer" style={{ width: 78, height: 18, borderRadius: 100 }} />
+            <div className="pulse-shimmer" style={{ width: '90%', height: 12, borderRadius: 6 }} />
+          </div>
+        ) : (
+          <span style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
+            Relevance unavailable
+          </span>
+        )}
+      </div>
+
+      {/* Cross-platform footprint placeholder (Chunk 2) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
           <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
         </svg>
-        <span style={{ fontSize: 11.5, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
-          Cross-platform footprint + niche relevance — coming soon
+        <span style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
+          Cross-platform footprint — coming soon
         </span>
       </div>
     </div>
@@ -311,17 +359,87 @@ function trendCategory(t: PulseTrend): string {
   return t.categories?.[0] || 'Trending';
 }
 
+// ─── Relevance cache (4h TTL, matches dashboard) ─────────────────────────────
+const RELEVANCE_TTL_MS = 4 * 60 * 60 * 1000;
+const RELEVANCE_PREFIX = 'mtc_pulse_relevance_';
+
+function hashStr(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; }
+  return String(h >>> 0);
+}
+
+function relevanceKey(trends: PulseTrend[]): string {
+  return RELEVANCE_PREFIX + hashStr(trends.map(t => t.id).sort().join('|'));
+}
+
+function loadRelevanceCache(trends: PulseTrend[]): Record<string, RelevanceScore> | null {
+  try {
+    const raw = localStorage.getItem(relevanceKey(trends));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.savedAt > RELEVANCE_TTL_MS) {
+      localStorage.removeItem(relevanceKey(trends));
+      return null;
+    }
+    return parsed.scores;
+  } catch { return null; }
+}
+
+function saveRelevanceCache(trends: PulseTrend[], scores: Record<string, RelevanceScore>) {
+  try {
+    localStorage.setItem(relevanceKey(trends), JSON.stringify({ scores, savedAt: Date.now() }));
+  } catch { /* ignore */ }
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function PulsePage() {
   const [result, setResult] = useState<PulseResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set());
+  const [relevance, setRelevance] = useState<Record<string, RelevanceScore>>({});
+  const [relevanceLoading, setRelevanceLoading] = useState(false);
+  const [sortMode, setSortMode] = useState<'trending' | 'relevant'>('trending');
 
   // Restore persisted category filter after mount (avoids SSR mismatch)
   useEffect(() => { setHiddenCats(loadHiddenCategories()); }, []);
 
-  const fetchTrends = useCallback(async () => {
+  // Score trends for relevance — cache-first, server-side Sonnet on miss
+  const scoreRelevance = useCallback(async (trendList: PulseTrend[], forceRefresh = false) => {
+    if (trendList.length === 0) return;
+    if (!forceRefresh) {
+      const cached = loadRelevanceCache(trendList);
+      if (cached) { setRelevance(cached); return; }
+    }
+    setRelevance({});
+    setRelevanceLoading(true);
+    try {
+      const res = await fetch('/api/pulse-relevance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trends: trendList.map(t => ({
+            id: t.id, query: t.query, categories: t.categories, trend_breakdown: t.trend_breakdown,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.scores)) {
+        const map: Record<string, RelevanceScore> = {};
+        for (const s of data.scores) {
+          if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
+            map[s.id] = { fit: s.fit, bridge: typeof s.bridge === 'string' ? s.bridge : '' };
+          }
+        }
+        setRelevance(map);
+        saveRelevanceCache(trendList, map);
+      }
+    } catch { /* leave unscored — cards render without a signal */ }
+    finally { setRelevanceLoading(false); }
+  }, []);
+
+  const fetchTrends = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -331,13 +449,14 @@ export default function PulsePage() {
         setError(data.error || 'Could not load trends right now.');
       } else {
         setResult(data);
+        scoreRelevance(data.trends || [], forceRefresh);
       }
     } catch {
       setError('Could not load trends right now.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scoreRelevance]);
 
   useEffect(() => { fetchTrends(); }, [fetchTrends]);
 
@@ -370,6 +489,27 @@ export default function PulsePage() {
   const hideAllCategories = useCallback(() => {
     setHiddenCats(() => { const next = new Set(availableCategories); saveHiddenCategories(next); return next; });
   }, [availableCategories]);
+
+  // Trending rank is fixed by velocity order — stays meaningful even when sorted by relevance
+  const trendingRank = useMemo(() => {
+    const m: Record<string, number> = {};
+    trends.forEach((t, i) => { m[t.id] = i + 1; });
+    return m;
+  }, [trends]);
+
+  // Apply sort to the (already category-filtered) trends
+  const displayTrends = useMemo(() => {
+    if (sortMode === 'trending') return visibleTrends;
+    const order: Record<Fit, number> = { high: 0, medium: 1, low: 2 };
+    // Array.sort is stable — equal-fit trends keep their trending order
+    return [...visibleTrends].sort((a, b) => {
+      const fa = order[relevance[a.id]?.fit ?? 'medium'];
+      const fb = order[relevance[b.id]?.fit ?? 'medium'];
+      return fa - fb;
+    });
+  }, [visibleTrends, sortMode, relevance]);
+
+  const hasAnyScores = Object.keys(relevance).length > 0;
 
   return (
     <AppShell>
@@ -405,7 +545,7 @@ export default function PulsePage() {
                 onHideAll={hideAllCategories}
               />
             )}
-            <button className="btn-ghost" onClick={fetchTrends} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
+            <button className="btn-ghost" onClick={() => fetchTrends(true)} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                 style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
                 <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
@@ -437,7 +577,7 @@ export default function PulsePage() {
               <p style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', margin: '0 0 20px' }}>
                 The trends service may be warming up. Try again in a moment.
               </p>
-              <button className="btn-ghost" onClick={fetchTrends} style={{ fontSize: 13, padding: '8px 16px' }}>
+              <button className="btn-ghost" onClick={() => fetchTrends(true)} style={{ fontSize: 13, padding: '8px 16px' }}>
                 Try again
               </button>
             </div>
@@ -446,26 +586,62 @@ export default function PulsePage() {
           {/* Feed */}
           {!loading && !error && (
             <>
-              <div style={{ marginBottom: 24 }}>
-                <h1 style={{
-                  fontFamily: 'var(--font-ui)', fontSize: 32, fontWeight: 800,
-                  letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 8px',
-                }}>
-                  {visibleTrends.length} trends right now
-                  {visibleTrends.length < trends.length && (
-                    <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-dim)', marginLeft: 10 }}>
-                      {trends.length - visibleTrends.length} hidden by filters
-                    </span>
-                  )}
-                </h1>
-                <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', maxWidth: 620, margin: 0 }}>
-                  What the internet is searching for in the last 24–72 hours. Ride a wave before it crests — cross-platform signal and niche-tailored angles are on the way.
-                </p>
+              <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <h1 style={{
+                    fontFamily: 'var(--font-ui)', fontSize: 32, fontWeight: 800,
+                    letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 8px',
+                  }}>
+                    {visibleTrends.length} trends right now
+                    {visibleTrends.length < trends.length && (
+                      <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-dim)', marginLeft: 10 }}>
+                        {trends.length - visibleTrends.length} hidden by filters
+                      </span>
+                    )}
+                  </h1>
+                  <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', maxWidth: 620, margin: 0 }}>
+                    What the internet is searching for in the last 24–72 hours. Ride a wave before it crests — niche-tailored angles unlock on each card.
+                  </p>
+                </div>
+
+                {/* Sort toggle */}
+                {hasAnyScores && (
+                  <div style={{
+                    display: 'inline-flex', background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    borderRadius: 100, padding: 3, flexShrink: 0,
+                  }}>
+                    {(['trending', 'relevant'] as const).map(mode => {
+                      const active = sortMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          onClick={() => setSortMode(mode)}
+                          style={{
+                            fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: 'var(--font-ui)',
+                            padding: '6px 14px', borderRadius: 100, border: 'none', cursor: 'pointer',
+                            background: active ? 'var(--surface-solid)' : 'transparent',
+                            color: active ? 'var(--accent)' : 'var(--text-muted)',
+                            boxShadow: active ? 'var(--shadow-xs)' : 'none',
+                            transition: 'all 0.15s', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {mode === 'trending' ? 'Trending' : 'Relevant to me'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
-                {visibleTrends.map((trend, i) => (
-                  <PulseCard key={trend.id} trend={trend} rank={i + 1} />
+                {displayTrends.map((trend) => (
+                  <PulseCard
+                    key={trend.id}
+                    trend={trend}
+                    rank={trendingRank[trend.id]}
+                    relevance={relevance[trend.id]}
+                    relevanceLoading={relevanceLoading}
+                  />
                 ))}
               </div>
 
@@ -483,6 +659,18 @@ export default function PulsePage() {
           )}
         </main>
       </div>
+
+      <style>{`
+        .pulse-shimmer {
+          background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 37%, var(--surface-2) 63%);
+          background-size: 400% 100%;
+          animation: pulseShimmer 1.4s ease-in-out infinite;
+        }
+        @keyframes pulseShimmer {
+          0% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+      `}</style>
     </AppShell>
   );
 }
