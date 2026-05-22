@@ -78,29 +78,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, scores: [] });
     }
 
-    // Fetch creator context server-side (never trust the client for this)
-    let platforms: string[] = [];
-    let styles: string[] = [];
-    let brief = '';
-    let format = '';
-    try {
-      const { userId } = await auth();
-      if (userId) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('platforms, content_styles, audience_brief, content_format')
-          .eq('user_id', userId)
-          .single();
-        if (profile) {
-          platforms = profile.platforms || [];
-          styles = profile.content_styles || [];
-          brief = profile.audience_brief || '';
-          format = profile.content_format || '';
-        }
-      }
-    } catch { /* best-effort — fall through with empty context */ }
+    // Creator context — client sends it (same source the dashboard uses).
+    // This is the user's own profile data; the prompt + API key stay server-side.
+    let brief: string = typeof body?.brief === 'string' ? body.brief : '';
+    let platforms: string[] = Array.isArray(body?.platforms) ? body.platforms : [];
+    let styles: string[] = Array.isArray(body?.content_styles) ? body.content_styles : [];
+    let format: string = typeof body?.content_format === 'string' ? body.content_format : '';
 
-    // No brief means no meaningful relevance scoring — return neutral, don't burn a Sonnet call
+    // Fallback: if the client didn't send a brief, try a server-side fetch
+    // (best-effort — Supabase can be slow/unavailable, so never block on it).
+    if (!brief.trim()) {
+      try {
+        const { userId } = await auth();
+        if (userId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('platforms, content_styles, audience_brief, content_format')
+            .eq('user_id', userId)
+            .single();
+          if (profile) {
+            brief = profile.audience_brief || '';
+            platforms = platforms.length ? platforms : (profile.platforms || []);
+            styles = styles.length ? styles : (profile.content_styles || []);
+            format = format || profile.content_format || '';
+          }
+        }
+      } catch { /* best-effort — fall through */ }
+    }
+
+    // No brief anywhere means no meaningful scoring — return neutral, don't burn a Sonnet call
     if (!brief.trim()) {
       return NextResponse.json({
         success: true,

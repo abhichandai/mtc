@@ -401,24 +401,56 @@ export default function PulsePage() {
   const [relevance, setRelevance] = useState<Record<string, RelevanceScore>>({});
   const [relevanceLoading, setRelevanceLoading] = useState(false);
   const [sortMode, setSortMode] = useState<'trending' | 'relevant'>('trending');
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Creator context held in a ref so scoreRelevance always reads the latest
+  const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
+    brief: '', platforms: [], format: '', styles: [],
+  });
+
+  // Fetch the creator's profile client-side (same source the dashboard uses).
+  // The brief travels to the relevance route in the request body — mirrors
+  // analyze-niche, and avoids depending on a server-side Supabase fetch.
+  useEffect(() => {
+    fetch('/api/profile')
+      .then(r => r.json())
+      .then(d => {
+        const p = d?.profile;
+        if (p) {
+          creatorCtxRef.current = {
+            brief: p.audience_brief || '',
+            platforms: p.platforms || [],
+            format: p.content_format || '',
+            styles: p.content_styles || [],
+          };
+        }
+      })
+      .catch(() => { /* best-effort */ })
+      .finally(() => setProfileLoaded(true));
+  }, []);
 
   // Restore persisted category filter after mount (avoids SSR mismatch)
   useEffect(() => { setHiddenCats(loadHiddenCategories()); }, []);
 
-  // Score trends for relevance — cache-first, server-side Sonnet on miss
-  const scoreRelevance = useCallback(async (trendList: PulseTrend[], forceRefresh = false) => {
+  // Score trends for relevance — cache-first, Sonnet on miss. Sends creator
+  // context (brief etc.) in the body; the route keeps prompt + API key server-side.
+  const scoreRelevance = useCallback(async (trendList: PulseTrend[]) => {
     if (trendList.length === 0) return;
-    if (!forceRefresh) {
-      const cached = loadRelevanceCache(trendList);
-      if (cached) { setRelevance(cached); return; }
-    }
+    const cached = loadRelevanceCache(trendList);
+    if (cached) { setRelevance(cached); return; }
+
     setRelevance({});
     setRelevanceLoading(true);
     try {
+      const ctx = creatorCtxRef.current;
       const res = await fetch('/api/pulse-relevance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brief: ctx.brief,
+          platforms: ctx.platforms,
+          content_format: ctx.format,
+          content_styles: ctx.styles,
           trends: trendList.map(t => ({
             id: t.id, query: t.query, categories: t.categories, trend_breakdown: t.trend_breakdown,
           })),
@@ -433,7 +465,10 @@ export default function PulsePage() {
           }
         }
         setRelevance(map);
-        saveRelevanceCache(trendList, map);
+        // Only cache real scores — never cache an all-neutral fallback
+        if (data.note !== 'no_brief' && data.note !== 'parse_failed' && Object.keys(map).length > 0) {
+          saveRelevanceCache(trendList, map);
+        }
       }
     } catch { /* leave unscored — cards render without a signal */ }
     finally { setRelevanceLoading(false); }
@@ -442,25 +477,33 @@ export default function PulsePage() {
   const fetchTrends = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
+    if (forceRefresh) { try { localStorage.removeItem(relevanceKey(result?.trends || [])); } catch { /* ignore */ } }
     try {
       const res = await fetch('/api/pulse-trends?geo=US&limit=24');
       const data: PulseResult = await res.json();
       if (!data.success) {
         setError(data.error || 'Could not load trends right now.');
       } else {
+        if (forceRefresh) { try { localStorage.removeItem(relevanceKey(data.trends || [])); } catch { /* ignore */ } }
         setResult(data);
-        scoreRelevance(data.trends || [], forceRefresh);
       }
     } catch {
       setError('Could not load trends right now.');
     } finally {
       setLoading(false);
     }
-  }, [scoreRelevance]);
+  }, [result]);
 
-  useEffect(() => { fetchTrends(); }, [fetchTrends]);
+  useEffect(() => { fetchTrends(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const trends = useMemo(() => result?.trends || [], [result]);
+
+  // Score relevance once BOTH the trend set and the profile are ready, so the
+  // brief is always available when we call the scorer (avoids the no-brief path).
+  useEffect(() => {
+    if (profileLoaded && trends.length > 0) scoreRelevance(trends);
+  }, [profileLoaded, trends, scoreRelevance]);
+
 
   // Categories present in the current feed (unique, sorted)
   const availableCategories = useMemo(() => {
