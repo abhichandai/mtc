@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import AppShell from '../components/AppShell';
 
 // ─── Types (mirrors Chunk 1 /pulse/trends/raw shape) ─────────────────────────
+type TrendSource = 'google' | 'reddit';
+
 type PulseTrend = {
   id: string;
   query: string;
@@ -15,6 +17,13 @@ type PulseTrend = {
   categories: string[];
   trend_breakdown: string[];
   news_page_token: string | null;
+  // ── Multi-source (Chunk 2) ──
+  source?: TrendSource;            // defaults to 'google' when absent
+  velocity?: number | null;        // normalised 0–1 within source (Reddit sets this)
+  reddit_upvotes?: number | null;  // Reddit only — option (b): no search_volume
+  subreddit?: string | null;       // Reddit only — e.g. "r/nba"
+  permalink?: string | null;       // Reddit only — thread URL (for the unlock view later)
+  sortVelocity?: number;           // unified 0–1 sort key, computed client-side
 };
 
 type PulseResult = {
@@ -63,6 +72,21 @@ function timeAgo(iso?: string): string {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   return `${h}h ago`;
+}
+
+// ─── Multi-source (Chunk 2) ──────────────────────────────────────────────────
+function trendSource(t: PulseTrend): TrendSource {
+  return t.source === 'reddit' ? 'reddit' : 'google';
+}
+
+// Give every trend a unified 0–1 sort key so the two feeds interleave fairly.
+// Reddit already arrives normalised (t.velocity); Google is normalised here by
+// search_volume within the Google set. Top item of each source ≈ 1.0.
+function combineAndSort(google: PulseTrend[], reddit: PulseTrend[]): PulseTrend[] {
+  const maxGV = Math.max(1, ...google.map(t => t.search_volume || 0));
+  const g = google.map(t => ({ ...t, source: 'google' as TrendSource, sortVelocity: (t.search_volume || 0) / maxGV }));
+  const r = reddit.map(t => ({ ...t, source: 'reddit' as TrendSource, sortVelocity: t.velocity ?? 0 }));
+  return [...g, ...r].sort((a, b) => (b.sortVelocity ?? 0) - (a.sortVelocity ?? 0));
 }
 
 // ─── Relevance ───────────────────────────────────────────────────────────────
@@ -147,14 +171,23 @@ function PulseCard({ trend, rank, relevance, relevanceLoading }: {
         {titleCase(trend.query)}
       </h3>
 
-      {/* Metrics row */}
+      {/* Metrics row — source-aware: Google shows searches, Reddit shows upvotes */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.search_volume)}</strong> searches
-        </span>
+        {trendSource(trend) === 'reddit' ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
+            </svg>
+            <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.reddit_upvotes ?? null)}</strong> upvotes
+          </span>
+        ) : (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.search_volume)}</strong> searches
+          </span>
+        )}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
@@ -211,14 +244,33 @@ function PulseCard({ trend, rank, relevance, relevanceLoading }: {
         )}
       </div>
 
-      {/* Cross-platform footprint placeholder (Chunk 2) */}
+      {/* Source badge (Chunk 2) — where this trend originated */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-        </svg>
-        <span style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
-          Cross-platform footprint — coming soon
-        </span>
+        {trendSource(trend) === 'reddit' ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-ui)',
+            color: '#D93A00', background: 'rgba(217,58,0,0.10)',
+            padding: '3px 9px', borderRadius: 100, letterSpacing: '0.01em',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5.01 9.05c.02.16.03.32.03.49 0 2.5-2.91 4.53-6.5 4.53s-6.5-2.03-6.5-4.53c0-.17.01-.33.03-.49a1.4 1.4 0 1 1 1.66-2.18c.84-.58 1.99-.96 3.27-1.01l.62-2.92a.3.3 0 0 1 .36-.23l2.06.44a.99.99 0 1 1-.12.55l-1.83-.39-.55 2.6c1.25.06 2.38.43 3.21 1.01a1.4 1.4 0 1 1 1.65 2.2zM9.25 12a1 1 0 1 0 2 0 1 1 0 0 0-2 0zm3.5 2.5c-.78.46-2.22.46-3 0a.32.32 0 0 0-.44.46c.6.6 1.85.65 1.94.65.09 0 1.34-.05 1.94-.65a.32.32 0 0 0-.44-.46zm.25-1.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+            </svg>
+            {trend.subreddit || 'Reddit'}
+          </span>
+        ) : (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-ui)',
+            color: 'var(--text-muted)', background: 'var(--surface-2)',
+            padding: '3px 9px', borderRadius: 100, letterSpacing: '0.01em',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            Google Trends
+          </span>
+        )}
       </div>
     </div>
   );
@@ -400,7 +452,7 @@ export default function PulsePage() {
   const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set());
   const [relevance, setRelevance] = useState<Record<string, RelevanceScore>>({});
   const [relevanceLoading, setRelevanceLoading] = useState(false);
-  const [sortMode, setSortMode] = useState<'trending' | 'relevant'>('trending');
+  const [viewMode, setViewMode] = useState<'relevant' | 'all'>('relevant');
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Creator context held in a ref so scoreRelevance always reads the latest
@@ -479,13 +531,34 @@ export default function PulsePage() {
     setError(null);
     if (forceRefresh) { try { localStorage.removeItem(relevanceKey(result?.trends || [])); } catch { /* ignore */ } }
     try {
-      const res = await fetch('/api/pulse-trends?geo=US&limit=24');
-      const data: PulseResult = await res.json();
-      if (!data.success) {
-        setError(data.error || 'Could not load trends right now.');
+      // Fetch Google + Reddit in parallel. Tolerate one source failing —
+      // show whatever came back; only error if BOTH are empty.
+      const [gRes, rRes] = await Promise.allSettled([
+        fetch('/api/pulse-trends?geo=US&limit=24'),
+        fetch('/api/pulse-reddit?limit=24'),
+      ]);
+
+      let google: PulseTrend[] = [];
+      let reddit: PulseTrend[] = [];
+      if (gRes.status === 'fulfilled') {
+        try { const d: PulseResult = await gRes.value.json(); if (d.success) google = d.trends || []; } catch { /* ignore */ }
+      }
+      if (rRes.status === 'fulfilled') {
+        try { const d: PulseResult = await rRes.value.json(); if (d.success) reddit = d.trends || []; } catch { /* ignore */ }
+      }
+
+      if (google.length === 0 && reddit.length === 0) {
+        setError('Could not load trends right now.');
       } else {
-        if (forceRefresh) { try { localStorage.removeItem(relevanceKey(data.trends || [])); } catch { /* ignore */ } }
-        setResult(data);
+        const combined = combineAndSort(google, reddit);
+        if (forceRefresh) { try { localStorage.removeItem(relevanceKey(combined)); } catch { /* ignore */ } }
+        setResult({
+          success: true,
+          source: 'google+reddit',
+          fetched_at: new Date().toISOString(),
+          count: combined.length,
+          trends: combined,
+        });
       }
     } catch {
       setError('Could not load trends right now.');
@@ -510,11 +583,17 @@ export default function PulsePage() {
     return [...new Set(trends.map(trendCategory))].sort();
   }, [trends]);
 
-  // Trends after applying the category filter
+  // Trends after category filter, then (under 'relevant' view) hiding low-fit.
   const visibleTrends = useMemo(() => {
-    if (hiddenCats.size === 0) return trends;
-    return trends.filter(t => !hiddenCats.has(trendCategory(t)));
-  }, [trends, hiddenCats]);
+    let list = hiddenCats.size === 0 ? trends : trends.filter(t => !hiddenCats.has(trendCategory(t)));
+    if (viewMode === 'relevant') {
+      // Hide only CONFIRMED low-fit. Unscored trends stay visible — fail open
+      // during progressive fill and when there's no brief. (Chunk 2: multi-source
+      // volume makes default-hide-low worth the slight reflow when scores land.)
+      list = list.filter(t => relevance[t.id]?.fit !== 'low');
+    }
+    return list;
+  }, [trends, hiddenCats, viewMode, relevance]);
 
   const toggleCategory = useCallback((cat: string) => {
     setHiddenCats(prev => {
@@ -540,17 +619,17 @@ export default function PulsePage() {
     return m;
   }, [trends]);
 
-  // Apply sort to the (already category-filtered) trends
+  // Apply sort to the (already filtered) trends
   const displayTrends = useMemo(() => {
-    if (sortMode === 'trending') return visibleTrends;
+    if (viewMode === 'all') return visibleTrends; // already in unified velocity order
     const order: Record<Fit, number> = { high: 0, medium: 1, low: 2 };
-    // Array.sort is stable — equal-fit trends keep their trending order
+    // Array.sort is stable — equal-fit trends keep their velocity order
     return [...visibleTrends].sort((a, b) => {
       const fa = order[relevance[a.id]?.fit ?? 'medium'];
       const fb = order[relevance[b.id]?.fit ?? 'medium'];
       return fa - fb;
     });
-  }, [visibleTrends, sortMode, relevance]);
+  }, [visibleTrends, viewMode, relevance]);
 
   const hasAnyScores = Object.keys(relevance).length > 0;
 
@@ -643,22 +722,22 @@ export default function PulsePage() {
                     )}
                   </h1>
                   <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', maxWidth: 620, margin: 0 }}>
-                    What the internet is searching for in the last 24–72 hours. Ride a wave before it crests — niche-tailored angles unlock on each card.
+                    What&apos;s breaking out across the web in the last 24–72 hours. Ride a wave before it crests — niche-tailored angles unlock on each card.
                   </p>
                 </div>
 
-                {/* Sort toggle */}
+                {/* View toggle */}
                 {hasAnyScores && (
                   <div style={{
                     display: 'inline-flex', background: 'var(--surface-2)', border: '1px solid var(--border)',
                     borderRadius: 100, padding: 3, flexShrink: 0,
                   }}>
-                    {(['trending', 'relevant'] as const).map(mode => {
-                      const active = sortMode === mode;
+                    {(['relevant', 'all'] as const).map(mode => {
+                      const active = viewMode === mode;
                       return (
                         <button
                           key={mode}
-                          onClick={() => setSortMode(mode)}
+                          onClick={() => setViewMode(mode)}
                           style={{
                             fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: 'var(--font-ui)',
                             padding: '6px 14px', borderRadius: 100, border: 'none', cursor: 'pointer',
@@ -668,7 +747,7 @@ export default function PulsePage() {
                             transition: 'all 0.15s', whiteSpace: 'nowrap',
                           }}
                         >
-                          {mode === 'trending' ? 'Trending' : 'Relevant to me'}
+                          {mode === 'relevant' ? 'Relevant to me' : 'Show all trends'}
                         </button>
                       );
                     })}
