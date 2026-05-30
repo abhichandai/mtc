@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
-import crypto from 'crypto';
+import { briefHash } from '@/lib/pulse';
 
 // E3: the read route the frontend will consume. Replaces today's
 // 'fetch Google + fetch Reddit + combine client-side' flow with a single
@@ -12,19 +12,6 @@ import crypto from 'crypto';
 // The frontend uses scores=null as the signal to call /api/pulse-relevance.
 
 export const maxDuration = 15; // pure DB reads — should be fast
-
-// Hash of (brief + platforms + format + styles). Used to invalidate the
-// cache when the creator changes any input to the scorer. Must match the
-// hash produced by /api/pulse-relevance (E4 will use the same function).
-export function briefHash(brief: string, platforms: string[], format: string, styles: string[]): string {
-  const normalized = JSON.stringify({
-    brief: (brief || '').trim(),
-    platforms: [...(platforms || [])].sort(),
-    format: format || '',
-    styles: [...(styles || [])].sort(),
-  });
-  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
-}
 
 export async function GET() {
   const { userId } = await auth();

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
+import { briefHash } from '@/lib/pulse';
 
 // Sonnet scoring is fast (one batched call) but give headroom for cold starts
 export const maxDuration = 60;
@@ -67,7 +68,44 @@ One entry per trend, same ids you were given.`;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const trends: IncomingTrend[] = Array.isArray(body?.trends) ? body.trends : [];
+
+    // Auth — needed to write the user_relevance_cache row in the new flow.
+    // Best-effort: if auth fails we can still score, we just skip the cache write.
+    const { userId } = await auth().catch(() => ({ userId: null as string | null }));
+
+    // E4 dual-path: prefer master_refresh_id (new flow, reads trends from
+    // master pool + writes cache). Fall back to trends-in-body (legacy flow,
+    // kept so the current Pulse frontend keeps working until E5 lands).
+    const masterRefreshId: number | null =
+      typeof body?.master_refresh_id === 'number' ? body.master_refresh_id : null;
+
+    let trends: IncomingTrend[] = [];
+
+    if (masterRefreshId !== null) {
+      // New flow — read trends from the master pool snapshot
+      const { data: master, error: masterErr } = await supabase
+        .from('pulse_trends_master')
+        .select('id, trends')
+        .eq('id', masterRefreshId)
+        .maybeSingle();
+
+      if (masterErr) {
+        return NextResponse.json({ error: masterErr.message }, { status: 500 });
+      }
+      if (!master) {
+        // Snapshot was pruned between pulse-feed reading it and us trying
+        // to score it — frontend should re-fetch /api/pulse-feed for the
+        // current master_refresh_id.
+        return NextResponse.json(
+          { error: 'master_refresh_id no longer exists', code: 'stale_snapshot' },
+          { status: 410 }
+        );
+      }
+      trends = Array.isArray(master.trends) ? (master.trends as IncomingTrend[]) : [];
+    } else {
+      // Legacy flow — trends come from the client
+      trends = Array.isArray(body?.trends) ? body.trends : [];
+    }
 
     if (trends.length === 0) {
       return NextResponse.json({ success: true, scores: [] });
@@ -82,26 +120,24 @@ export async function POST(req: NextRequest) {
 
     // Fallback: if the client didn't send a brief, try a server-side fetch
     // (best-effort — Supabase can be slow/unavailable, so never block on it).
-    if (!brief.trim()) {
+    if (!brief.trim() && userId) {
       try {
-        const { userId } = await auth();
-        if (userId) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('platforms, content_styles, audience_brief, content_format')
-            .eq('user_id', userId)
-            .single();
-          if (profile) {
-            brief = profile.audience_brief || '';
-            platforms = platforms.length ? platforms : (profile.platforms || []);
-            styles = styles.length ? styles : (profile.content_styles || []);
-            format = format || profile.content_format || '';
-          }
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('platforms, content_styles, audience_brief, content_format')
+          .eq('user_id', userId)
+          .single();
+        if (profile) {
+          brief = profile.audience_brief || '';
+          platforms = platforms.length ? platforms : (profile.platforms || []);
+          styles = styles.length ? styles : (profile.content_styles || []);
+          format = format || profile.content_format || '';
         }
       } catch { /* best-effort — fall through */ }
     }
 
-    // No brief anywhere means no meaningful scoring — return neutral, don't burn a Sonnet call
+    // No brief anywhere means no meaningful scoring — return neutral, don't
+    // burn a Sonnet call, and don't pollute the cache with a no-brief result
     if (!brief.trim()) {
       return NextResponse.json({
         success: true,
@@ -147,8 +183,29 @@ Score every topic for THIS creator and return the JSON array.`;
           .map(s => ({ id: s.id, fit: s.fit }));
       }
     } catch {
-      // parse failed — return empty so the client renders trends without a signal
+      // parse failed — return empty so the client renders trends without a signal.
+      // Don't cache this either; next page load should retry.
       return NextResponse.json({ success: true, scores: [], note: 'parse_failed' });
+    }
+
+    // E4: write the cache row so subsequent /api/pulse-feed calls return
+    // these scores directly. Only writes when we used the master_refresh_id
+    // path AND have a userId AND produced real scores (don't cache empty/fallback).
+    if (masterRefreshId !== null && userId && scores.length > 0) {
+      const hash = briefHash(brief, platforms, format, styles);
+      // Best-effort upsert — a failed cache write shouldn't fail the response.
+      const { error: cacheErr } = await supabase
+        .from('user_relevance_cache')
+        .upsert({
+          user_id: userId,
+          master_refresh_id: masterRefreshId,
+          brief_hash: hash,
+          scores: scores,
+          scored_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      if (cacheErr) {
+        console.error('pulse-relevance cache upsert failed:', cacheErr);
+      }
     }
 
     return NextResponse.json({ success: true, scores });
