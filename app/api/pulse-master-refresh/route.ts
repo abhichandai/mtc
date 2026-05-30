@@ -57,8 +57,17 @@ export async function GET(req: NextRequest) {
   // verification can pass the same header. No Clerk — this is a system route.
   const expectedSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get('authorization');
-  if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!expectedSecret) {
+    return NextResponse.json(
+      { error: 'Server misconfiguration: CRON_SECRET env var not set' },
+      { status: 500 }
+    );
+  }
+  if (authHeader !== `Bearer ${expectedSecret}`) {
+    return NextResponse.json(
+      { error: 'Unauthorized', auth_present: !!authHeader },
+      { status: 401 }
+    );
   }
 
   // Fetch both sources in parallel. Tolerate one failing — same posture as
