@@ -121,14 +121,14 @@ function SourceLogo({ source, size = 18 }: { source: TrendSource; size?: number 
   );
 }
 
-// ─── Pulse Row (Chunk B — table layout) ──────────────────────────────────────
-function PulseRow({ trend, rank, relevance, relevanceLoading, expanded, onToggle }: {
+// ─── Pulse Row (Chunk B — table layout, click to open detail modal) ──────────
+function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: {
   trend: PulseTrend;
   rank: number;
   relevance?: RelevanceScore;
   relevanceLoading: boolean;
-  expanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
+  isLast?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const source = trendSource(trend);
@@ -139,170 +139,251 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, expanded, onToggle
     : `${formatVolume(trend.search_volume)} · ${formatHours(trend.hours_trending)}`;
 
   return (
-    <div
+    <button
+      onClick={onOpen}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
+        width: '100%',
         opacity: isLowFit ? 0.7 : 1,
-        background: 'var(--surface)',
-        border: `1px solid ${hover || expanded ? 'var(--border-bright)' : 'var(--surface-border)'}`,
-        borderRadius: 12,
-        boxShadow: hover || expanded ? 'var(--shadow-md)' : 'var(--shadow-sm)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        transition: 'box-shadow 0.18s, border-color 0.18s, opacity 0.2s',
-        overflow: 'hidden',
+        background: hover ? 'var(--surface)' : 'transparent',
+        border: 'none',
+        borderBottom: isLast ? 'none' : '1px solid var(--border)',
+        padding: '14px 18px',
+        cursor: 'pointer',
+        display: 'grid',
+        gridTemplateColumns: '36px 22px minmax(0, 1fr) auto auto auto 18px',
+        alignItems: 'center',
+        gap: 14,
+        textAlign: 'left',
+        fontFamily: 'var(--font-ui)',
+        color: 'inherit',
+        transition: 'background 0.12s, opacity 0.2s',
       }}
     >
-      {/* Collapsed row — click anywhere to toggle */}
-      <button
-        onClick={onToggle}
-        aria-expanded={expanded}
-        style={{
-          width: '100%',
-          background: 'none',
-          border: 'none',
-          padding: '14px 18px',
-          cursor: 'pointer',
-          display: 'grid',
-          gridTemplateColumns: '34px 22px minmax(0, 1fr) auto auto auto 16px',
-          alignItems: 'center',
-          gap: 14,
-          textAlign: 'left',
-          fontFamily: 'var(--font-ui)',
-          color: 'inherit',
-        }}
-      >
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.02em' }}>
-          #{rank}
-        </span>
-        <SourceLogo source={source} size={18} />
+      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.02em' }}>
+        #{rank}
+      </span>
+      <SourceLogo source={source} size={18} />
+      <span style={{
+        fontSize: 14.5, fontWeight: 600, color: 'var(--text)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        letterSpacing: '-0.01em',
+        minWidth: 0,
+      }}>
+        {titleCase(trend.query)}
+      </span>
+      <span style={{
+        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+        color: 'var(--accent)', background: 'var(--accent-dim)',
+        padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap',
+      }}>
+        {category}
+      </span>
+      {relevance ? (
         <span style={{
-          fontSize: 14.5, fontWeight: 600, color: 'var(--text)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          letterSpacing: '-0.01em',
-          minWidth: 0,
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          fontSize: 10.5, fontWeight: 700, letterSpacing: '0.02em',
+          color: fitStyle(relevance.fit).labelColor, background: fitStyle(relevance.fit).bg,
+          padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
+          {fitStyle(relevance.fit).label}
+        </span>
+      ) : relevanceLoading ? (
+        <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block' }} />
+      ) : (
+        <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic' }}>—</span>
+      )}
+      <span style={{
+        fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap',
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {compactMetric}
+      </span>
+      <svg
+        width="14" height="14" viewBox="0 0 24 24" fill="none"
+        stroke={hover ? 'var(--accent)' : 'var(--text-dim)'}
+        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'translateX(2px)' : 'none' }}
+        aria-label="Open detail"
+      >
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </button>
+  );
+}
+
+// ─── Pulse Trend Detail Modal (matches the dashboard AIE drawer pattern) ─────
+function PulseTrendDetail({ trend, relevance, onClose }: {
+  trend: PulseTrend;
+  relevance?: RelevanceScore;
+  onClose: () => void;
+}) {
+  const source = trendSource(trend);
+  const category = trend.categories?.[0] || 'Trending';
+
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [onClose]);
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px 20px', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: 'var(--surface)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <SourceLogo source={source} size={18} />
+          <span style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+            color: 'var(--accent)',
+          }}>
+            {category}
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-muted)', padding: 4, display: 'flex', alignItems: 'center',
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: '22px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <h2 style={{
+          fontFamily: 'var(--font-ui)', fontSize: 22, fontWeight: 800,
+          lineHeight: 1.25, letterSpacing: '-0.02em', color: 'var(--text)',
+          margin: 0,
         }}>
           {titleCase(trend.query)}
-        </span>
-        <span style={{
-          fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
-          color: 'var(--accent)', background: 'var(--accent-dim)',
-          padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap',
-        }}>
-          {category}
-        </span>
-        {relevance ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: 10.5, fontWeight: 700, letterSpacing: '0.02em',
-            color: fitStyle(relevance.fit).labelColor, background: fitStyle(relevance.fit).bg,
-            padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
-            {fitStyle(relevance.fit).label}
-          </span>
-        ) : relevanceLoading ? (
-          <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block' }} />
-        ) : (
-          <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic' }}>—</span>
-        )}
-        <span style={{
-          fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap',
-          fontVariantNumeric: 'tabular-nums',
-        }}>
-          {compactMetric}
-        </span>
-        <svg
-          width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="var(--text-dim)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
-        >
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
+        </h2>
 
-      {/* Expanded panel */}
-      {expanded && (
-        <div style={{
-          padding: '14px 18px 18px',
-          borderTop: '1px dashed var(--border)',
-          display: 'flex', flexDirection: 'column', gap: 12,
-        }}>
-          {/* Source label + velocity + full metrics */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {source === 'reddit' ? (
-              <a
-                href={trend.permalink || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontSize: 12, fontWeight: 600, color: '#D93A00',
-                  background: 'rgba(217,58,0,0.10)',
-                  padding: '4px 10px', borderRadius: 100,
-                  textDecoration: 'none', letterSpacing: '0.01em',
-                  fontFamily: 'var(--font-ui)',
-                }}
-              >
-                <SourceLogo source="reddit" size={12} />
-                {trend.subreddit || 'Reddit'}
-              </a>
-            ) : (
-              <span style={{
+        {/* Source + velocity + full metrics */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {source === 'reddit' ? (
+            <a
+              href={trend.permalink || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                fontSize: 12, fontWeight: 600,
-                color: 'var(--text-muted)', background: 'var(--surface-2)',
-                padding: '4px 10px', borderRadius: 100, letterSpacing: '0.01em',
+                fontSize: 12.5, fontWeight: 600, color: '#D93A00',
+                background: 'rgba(217,58,0,0.10)',
+                padding: '5px 11px', borderRadius: 100,
+                textDecoration: 'none', letterSpacing: '0.01em',
                 fontFamily: 'var(--font-ui)',
-              }}>
-                <SourceLogo source="google" size={12} />
-                Google Trends
-              </span>
-            )}
-
+              }}
+            >
+              <SourceLogo source="reddit" size={13} />
+              {trend.subreddit || 'Reddit'}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 2 }}>
+                <path d="M7 17L17 7M7 7h10v10"/>
+              </svg>
+            </a>
+          ) : (
             <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              fontSize: 11, fontWeight: 700,
-              color: 'var(--hot)', background: 'var(--hot-glow)',
-              padding: '3px 9px', borderRadius: 100, letterSpacing: '0.02em',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 12.5, fontWeight: 600,
+              color: 'var(--text-muted)', background: 'var(--surface-2)',
+              padding: '5px 11px', borderRadius: 100, letterSpacing: '0.01em',
               fontFamily: 'var(--font-ui)',
             }}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19V5M5 12l7-7 7 7"/>
-              </svg>
-              {velocityLabel(trend.velocity_pct)}
+              <SourceLogo source="google" size={13} />
+              Google Trends
             </span>
+          )}
 
-            <span style={{
-              fontSize: 12.5, color: 'var(--text-muted)',
-              marginLeft: 'auto', fontFamily: 'var(--font-ui)',
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 11, fontWeight: 700,
+            color: 'var(--hot)', background: 'var(--hot-glow)',
+            padding: '4px 10px', borderRadius: 100, letterSpacing: '0.02em',
+            fontFamily: 'var(--font-ui)',
+          }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
+            </svg>
+            {velocityLabel(trend.velocity_pct)}
+          </span>
+        </div>
+
+        {/* Metrics detail */}
+        <div style={{
+          display: 'flex', gap: 18, padding: '12px 14px',
+          background: 'var(--surface-2)', borderRadius: 10,
+          fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)',
+        }}>
+          <span>
+            {source === 'reddit' ? (
+              <><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.reddit_upvotes ?? null)}</strong> upvotes</>
+            ) : (
+              <><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.search_volume)}</strong> searches</>
+            )}
+          </span>
+          <span>·</span>
+          <span>trending <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatHours(trend.hours_trending)}</strong></span>
+        </div>
+
+        {/* Breakdown chips */}
+        {trend.trend_breakdown && trend.trend_breakdown.length > 0 && (
+          <div>
+            <div style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
+              color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'var(--font-ui)',
             }}>
-              {source === 'reddit' ? (
-                <><strong style={{ color: 'var(--text)' }}>{formatVolume(trend.reddit_upvotes ?? null)}</strong> upvotes · trending {formatHours(trend.hours_trending)}</>
-              ) : (
-                <><strong style={{ color: 'var(--text)' }}>{formatVolume(trend.search_volume)}</strong> searches · trending {formatHours(trend.hours_trending)}</>
-              )}
-            </span>
-          </div>
-
-          {/* Breakdown chips */}
-          {trend.trend_breakdown && trend.trend_breakdown.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {trend.trend_breakdown.slice(0, 5).map((term, i) => (
+              Context
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+              {trend.trend_breakdown.slice(0, 6).map((term, i) => (
                 <span key={i} style={{
-                  fontSize: 11.5, fontFamily: 'var(--font-ui)', color: 'var(--text-muted)',
-                  background: 'var(--surface-2)', border: '1px solid var(--border)',
-                  padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
+                  fontSize: 12, fontFamily: 'var(--font-ui)', color: 'var(--text-muted)',
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  padding: '4px 11px', borderRadius: 100,
                 }}>
                   {term}
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Fit */}
+        <div>
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
+            color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'var(--font-ui)',
+          }}>
+            Relevance to your audience
+          </div>
+          {relevance ? (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-ui)',
+              letterSpacing: '0.02em', color: fitStyle(relevance.fit).labelColor,
+              background: fitStyle(relevance.fit).bg, padding: '5px 11px', borderRadius: 100,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
+              {fitStyle(relevance.fit).label}
+            </span>
+          ) : (
+            <span style={{ fontSize: 12.5, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
+              Relevance signal not yet available
+            </span>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -489,15 +570,8 @@ export default function PulsePage() {
   // Chunk B — table layout state
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-
-  const toggleRow = useCallback((id: string) => {
-    setExpandedRows(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
+  const [selectedTrend, setSelectedTrend] = useState<PulseTrend | null>(null);
+  const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
 
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
@@ -808,16 +882,24 @@ export default function PulsePage() {
                 )}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {pageTrends.map((trend) => (
+              <div style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--surface-border)',
+                borderRadius: 12,
+                boxShadow: 'var(--shadow-sm)',
+                backdropFilter: 'blur(14px)',
+                WebkitBackdropFilter: 'blur(14px)',
+                overflow: 'hidden',
+              }}>
+                {pageTrends.map((trend, i) => (
                   <PulseRow
                     key={trend.id}
                     trend={trend}
                     rank={trendingRank[trend.id]}
                     relevance={relevance[trend.id]}
                     relevanceLoading={relevanceLoading}
-                    expanded={expandedRows.has(trend.id)}
-                    onToggle={() => toggleRow(trend.id)}
+                    onOpen={() => setSelectedTrend(trend)}
+                    isLast={i === pageTrends.length - 1}
                   />
                 ))}
               </div>
@@ -876,6 +958,37 @@ export default function PulsePage() {
           100% { background-position: 0% 50%; }
         }
       `}</style>
+
+      {/* Detail modal (mirrors the dashboard AIE drawer pattern) */}
+      {selectedTrend && (
+        <>
+          <div className="panel-overlay" onClick={handleClosePanel} />
+          <div style={{
+            position: 'fixed',
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(720px, 95vw)',
+            maxHeight: 'min(85vh, 760px)',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            zIndex: 51,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.15)',
+            animation: 'modal-in 0.2s ease',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}>
+            <PulseTrendDetail
+              trend={selectedTrend}
+              relevance={relevance[selectedTrend.id]}
+              onClose={handleClosePanel}
+            />
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }
