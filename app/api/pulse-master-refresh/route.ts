@@ -64,10 +64,7 @@ export async function GET(req: NextRequest) {
     );
   }
   if (authHeader !== `Bearer ${expectedSecret}`) {
-    return NextResponse.json(
-      { error: 'Unauthorized', auth_present: !!authHeader },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   // Fetch both sources in parallel. Tolerate one failing — same posture as
