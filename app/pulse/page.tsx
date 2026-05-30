@@ -101,166 +101,208 @@ function fitStyle(fit: Fit): { dot: string; label: string; labelColor: string; b
   }
 }
 
-// ─── Pulse Card ──────────────────────────────────────────────────────────────
-function PulseCard({ trend, rank, relevance, relevanceLoading }: {
+// ─── Source identification ───────────────────────────────────────────────────
+function SourceLogo({ source, size = 18 }: { source: TrendSource; size?: number }) {
+  if (source === 'reddit') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="#D93A00" style={{ flexShrink: 0 }} aria-label="Reddit">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5.01 9.05c.02.16.03.32.03.49 0 2.5-2.91 4.53-6.5 4.53s-6.5-2.03-6.5-4.53c0-.17.01-.33.03-.49a1.4 1.4 0 1 1 1.66-2.18c.84-.58 1.99-.96 3.27-1.01l.62-2.92a.3.3 0 0 1 .36-.23l2.06.44a.99.99 0 1 1-.12.55l-1.83-.39-.55 2.6c1.25.06 2.38.43 3.21 1.01a1.4 1.4 0 1 1 1.65 2.2zM9.25 12a1 1 0 1 0 2 0 1 1 0 0 0-2 0zm3.5 2.5c-.78.46-2.22.46-3 0a.32.32 0 0 0-.44.46c.6.6 1.85.65 1.94.65.09 0 1.34-.05 1.94-.65a.32.32 0 0 0-.44-.46zm.25-1.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+      </svg>
+    );
+  }
+  // Google: multi-color G
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }} aria-label="Google Trends">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1a11 11 0 0 0-9.82 6.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+// ─── Pulse Row (Chunk B — table layout) ──────────────────────────────────────
+function PulseRow({ trend, rank, relevance, relevanceLoading, expanded, onToggle }: {
   trend: PulseTrend;
   rank: number;
   relevance?: RelevanceScore;
   relevanceLoading: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const [hover, setHover] = useState(false);
+  const source = trendSource(trend);
   const category = trend.categories?.[0] || 'Trending';
-  const breakdown = (trend.trend_breakdown || []).slice(0, 3);
   const isLowFit = relevance?.fit === 'low';
+  const compactMetric = source === 'reddit'
+    ? `${formatVolume(trend.reddit_upvotes ?? null)} up · ${formatHours(trend.hours_trending)}`
+    : `${formatVolume(trend.search_volume)} · ${formatHours(trend.hours_trending)}`;
 
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        opacity: isLowFit ? 0.72 : 1,
+        opacity: isLowFit ? 0.7 : 1,
         background: 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--border-bright)' : 'var(--surface-border)'}`,
+        border: `1px solid ${hover || expanded ? 'var(--border-bright)' : 'var(--surface-border)'}`,
         borderRadius: 12,
-        padding: 20,
-        boxShadow: hover ? 'var(--shadow-md)' : 'var(--shadow-sm)',
+        boxShadow: hover || expanded ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
-        transform: hover ? 'translateY(-2px)' : 'none',
-        transition: 'transform 0.18s, box-shadow 0.18s, border-color 0.18s, opacity 0.2s',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
+        transition: 'box-shadow 0.18s, border-color 0.18s, opacity 0.2s',
+        overflow: 'hidden',
       }}
     >
-      {/* Top row — category badge + velocity + rank */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      {/* Collapsed row — click anywhere to toggle */}
+      <button
+        onClick={onToggle}
+        aria-expanded={expanded}
+        style={{
+          width: '100%',
+          background: 'none',
+          border: 'none',
+          padding: '14px 18px',
+          cursor: 'pointer',
+          display: 'grid',
+          gridTemplateColumns: '34px 22px minmax(0, 1fr) auto auto auto 16px',
+          alignItems: 'center',
+          gap: 14,
+          textAlign: 'left',
+          fontFamily: 'var(--font-ui)',
+          color: 'inherit',
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.02em' }}>
+          #{rank}
+        </span>
+        <SourceLogo source={source} size={18} />
         <span style={{
-          fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 700,
-          letterSpacing: '0.05em', textTransform: 'uppercase',
+          fontSize: 14.5, fontWeight: 600, color: 'var(--text)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          letterSpacing: '-0.01em',
+          minWidth: 0,
+        }}>
+          {titleCase(trend.query)}
+        </span>
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
           color: 'var(--accent)', background: 'var(--accent-dim)',
-          padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180,
+          padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap',
         }}>
           {category}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            fontFamily: 'var(--font-ui)', fontSize: 11, fontWeight: 700,
-            color: 'var(--hot)', background: 'var(--hot-glow)',
-            padding: '3px 9px', borderRadius: 100, letterSpacing: '0.02em',
-          }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 19V5M5 12l7-7 7 7"/>
-            </svg>
-            {velocityLabel(trend.velocity_pct)}
-          </span>
-          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 700, color: 'var(--text-dim)' }}>
-            #{rank}
-          </span>
-        </div>
-      </div>
-
-      {/* Trend title */}
-      <h3 style={{
-        fontFamily: 'var(--font-ui)', fontSize: 19, fontWeight: 700,
-        lineHeight: 1.25, letterSpacing: '-0.02em', color: 'var(--text)',
-        margin: 0,
-      }}>
-        {titleCase(trend.query)}
-      </h3>
-
-      {/* Metrics row — source-aware: Google shows searches, Reddit shows upvotes */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {trendSource(trend) === 'reddit' ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 19V5M5 12l7-7 7 7"/>
-            </svg>
-            <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.reddit_upvotes ?? null)}</strong> upvotes
-          </span>
-        ) : (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
-            <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{formatVolume(trend.search_volume)}</strong> searches
-          </span>
-        )}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-          </svg>
-          trending {formatHours(trend.hours_trending)}
-        </span>
-      </div>
-
-      {/* Context chips (trend_breakdown) */}
-      {breakdown.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {breakdown.map((term, i) => (
-            <span key={i} style={{
-              fontSize: 12, fontFamily: 'var(--font-ui)', color: 'var(--text-muted)',
-              background: 'var(--surface-2)', border: '1px solid var(--border)',
-              padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
-              overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200,
-            }}>
-              {term}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Relevance signal (Chunk 4) */}
-      <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 11, marginTop: 2 }}>
         {relevance ? (
           <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)',
-            letterSpacing: '0.02em', color: fitStyle(relevance.fit).labelColor,
-            background: fitStyle(relevance.fit).bg, padding: '3px 9px', borderRadius: 100,
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 10.5, fontWeight: 700, letterSpacing: '0.02em',
+            color: fitStyle(relevance.fit).labelColor, background: fitStyle(relevance.fit).bg,
+            padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
           }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
             {fitStyle(relevance.fit).label}
           </span>
         ) : relevanceLoading ? (
-          <div className="pulse-shimmer" style={{ width: 78, height: 18, borderRadius: 100 }} />
+          <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block' }} />
         ) : (
-          <span style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
-            Relevance unavailable
-          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic' }}>—</span>
         )}
-      </div>
+        <span style={{
+          fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {compactMetric}
+        </span>
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="var(--text-dim)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
 
-      {/* Source badge (Chunk 2) — where this trend originated */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        {trendSource(trend) === 'reddit' ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-ui)',
-            color: '#D93A00', background: 'rgba(217,58,0,0.10)',
-            padding: '3px 9px', borderRadius: 100, letterSpacing: '0.01em',
-          }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5.01 9.05c.02.16.03.32.03.49 0 2.5-2.91 4.53-6.5 4.53s-6.5-2.03-6.5-4.53c0-.17.01-.33.03-.49a1.4 1.4 0 1 1 1.66-2.18c.84-.58 1.99-.96 3.27-1.01l.62-2.92a.3.3 0 0 1 .36-.23l2.06.44a.99.99 0 1 1-.12.55l-1.83-.39-.55 2.6c1.25.06 2.38.43 3.21 1.01a1.4 1.4 0 1 1 1.65 2.2zM9.25 12a1 1 0 1 0 2 0 1 1 0 0 0-2 0zm3.5 2.5c-.78.46-2.22.46-3 0a.32.32 0 0 0-.44.46c.6.6 1.85.65 1.94.65.09 0 1.34-.05 1.94-.65a.32.32 0 0 0-.44-.46zm.25-1.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
-            </svg>
-            {trend.subreddit || 'Reddit'}
-          </span>
-        ) : (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-ui)',
-            color: 'var(--text-muted)', background: 'var(--surface-2)',
-            padding: '3px 9px', borderRadius: 100, letterSpacing: '0.01em',
-          }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
-            Google Trends
-          </span>
-        )}
-      </div>
+      {/* Expanded panel */}
+      {expanded && (
+        <div style={{
+          padding: '14px 18px 18px',
+          borderTop: '1px dashed var(--border)',
+          display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          {/* Source label + velocity + full metrics */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {source === 'reddit' ? (
+              <a
+                href={trend.permalink || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontSize: 12, fontWeight: 600, color: '#D93A00',
+                  background: 'rgba(217,58,0,0.10)',
+                  padding: '4px 10px', borderRadius: 100,
+                  textDecoration: 'none', letterSpacing: '0.01em',
+                  fontFamily: 'var(--font-ui)',
+                }}
+              >
+                <SourceLogo source="reddit" size={12} />
+                {trend.subreddit || 'Reddit'}
+              </a>
+            ) : (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: 12, fontWeight: 600,
+                color: 'var(--text-muted)', background: 'var(--surface-2)',
+                padding: '4px 10px', borderRadius: 100, letterSpacing: '0.01em',
+                fontFamily: 'var(--font-ui)',
+              }}>
+                <SourceLogo source="google" size={12} />
+                Google Trends
+              </span>
+            )}
+
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 11, fontWeight: 700,
+              color: 'var(--hot)', background: 'var(--hot-glow)',
+              padding: '3px 9px', borderRadius: 100, letterSpacing: '0.02em',
+              fontFamily: 'var(--font-ui)',
+            }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7"/>
+              </svg>
+              {velocityLabel(trend.velocity_pct)}
+            </span>
+
+            <span style={{
+              fontSize: 12.5, color: 'var(--text-muted)',
+              marginLeft: 'auto', fontFamily: 'var(--font-ui)',
+            }}>
+              {source === 'reddit' ? (
+                <><strong style={{ color: 'var(--text)' }}>{formatVolume(trend.reddit_upvotes ?? null)}</strong> upvotes · trending {formatHours(trend.hours_trending)}</>
+              ) : (
+                <><strong style={{ color: 'var(--text)' }}>{formatVolume(trend.search_volume)}</strong> searches · trending {formatHours(trend.hours_trending)}</>
+              )}
+            </span>
+          </div>
+
+          {/* Breakdown chips */}
+          {trend.trend_breakdown && trend.trend_breakdown.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {trend.trend_breakdown.slice(0, 5).map((term, i) => (
+                <span key={i} style={{
+                  fontSize: 11.5, fontFamily: 'var(--font-ui)', color: 'var(--text-muted)',
+                  background: 'var(--surface-2)', border: '1px solid var(--border)',
+                  padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
+                }}>
+                  {term}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -444,6 +486,19 @@ export default function PulsePage() {
   const [viewMode, setViewMode] = useState<'relevant' | 'all'>('relevant');
   const [profileLoaded, setProfileLoaded] = useState(false);
 
+  // Chunk B — table layout state
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = useCallback((id: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
     brief: '', platforms: [], format: '', styles: [],
@@ -620,6 +675,15 @@ export default function PulsePage() {
     });
   }, [visibleTrends, viewMode, relevance]);
 
+  // Reset to page 1 when user-initiated filters/sort change (not on data updates)
+  useEffect(() => { setCurrentPage(1); }, [hiddenCats, viewMode]);
+
+  // Pagination — clamp page if list shrinks
+  const totalPages = Math.max(1, Math.ceil(displayTrends.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageTrends = displayTrends.slice(pageStart, pageStart + PAGE_SIZE);
+
   const hasAnyScores = Object.keys(relevance).length > 0;
 
   return (
@@ -744,17 +808,47 @@ export default function PulsePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
-                {displayTrends.map((trend) => (
-                  <PulseCard
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pageTrends.map((trend) => (
+                  <PulseRow
                     key={trend.id}
                     trend={trend}
                     rank={trendingRank[trend.id]}
                     relevance={relevance[trend.id]}
                     relevanceLoading={relevanceLoading}
+                    expanded={expandedRows.has(trend.id)}
+                    onToggle={() => toggleRow(trend.id)}
                   />
                 ))}
               </div>
+
+              {/* Pagination — hidden if everything fits on one page */}
+              {totalPages > 1 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                  marginTop: 24, paddingTop: 8, fontFamily: 'var(--font-ui)',
+                }}>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={safePage <= 1}
+                    style={{ fontSize: 12.5, padding: '6px 14px', opacity: safePage <= 1 ? 0.4 : 1 }}
+                  >
+                    ← Prev
+                  </button>
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                    Page <strong style={{ color: 'var(--text)' }}>{safePage}</strong> of {totalPages}
+                  </span>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safePage >= totalPages}
+                    style={{ fontSize: 12.5, padding: '6px 14px', opacity: safePage >= totalPages ? 0.4 : 1 }}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
 
               {trends.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
