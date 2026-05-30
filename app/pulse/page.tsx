@@ -152,7 +152,7 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
         padding: '14px 18px',
         cursor: 'pointer',
         display: 'grid',
-        gridTemplateColumns: '40px 32px minmax(0, 1fr) 130px 95px 110px 18px',
+        gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 95px 110px 18px',
         alignItems: 'center',
         gap: 14,
         textAlign: 'left',
@@ -164,7 +164,9 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.02em' }}>
         #{rank}
       </span>
-      <SourceLogo source={source} size={18} />
+      <span style={{ display: 'flex', justifyContent: 'center' }}>
+        <SourceLogo source={source} size={18} />
+      </span>
       <span style={{
         fontSize: 14.5, fontWeight: 600, color: 'var(--text)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -177,6 +179,7 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
         fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
         color: 'var(--accent)', background: 'var(--accent-dim)',
         padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap',
+        justifySelf: 'center',
       }}>
         {category}
       </span>
@@ -186,14 +189,15 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
           fontSize: 10.5, fontWeight: 700, letterSpacing: '0.02em',
           color: fitStyle(relevance.fit).labelColor, background: fitStyle(relevance.fit).bg,
           padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
+          justifySelf: 'center',
         }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
           {fitStyle(relevance.fit).label}
         </span>
       ) : relevanceLoading ? (
-        <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block' }} />
+        <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block', justifySelf: 'center' }} />
       ) : (
-        <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic' }}>—</span>
+        <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', justifySelf: 'center' }}>—</span>
       )}
       <span style={{
         fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap',
@@ -894,7 +898,7 @@ export default function PulsePage() {
                 {/* Column headers */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '40px 32px minmax(0, 1fr) 130px 95px 110px 18px',
+                  gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 95px 110px 18px',
                   alignItems: 'center',
                   gap: 14,
                   padding: '10px 18px',
@@ -904,6 +908,7 @@ export default function PulsePage() {
                   fontSize: 10.5, fontWeight: 700, letterSpacing: '0.07em',
                   textTransform: 'uppercase',
                   color: 'var(--text-dim)',
+                  textAlign: 'center',
                 }}>
                   <span>#</span>
                   <span>Source</span>
