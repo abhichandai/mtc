@@ -152,7 +152,7 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
         padding: '14px 18px',
         cursor: 'pointer',
         display: 'grid',
-        gridTemplateColumns: '36px 22px minmax(0, 1fr) auto auto auto 18px',
+        gridTemplateColumns: '40px 32px minmax(0, 1fr) 130px 95px 110px 18px',
         alignItems: 'center',
         gap: 14,
         textAlign: 'left',
@@ -891,6 +891,29 @@ export default function PulsePage() {
                 WebkitBackdropFilter: 'blur(14px)',
                 overflow: 'hidden',
               }}>
+                {/* Column headers */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '40px 32px minmax(0, 1fr) 130px 95px 110px 18px',
+                  alignItems: 'center',
+                  gap: 14,
+                  padding: '10px 18px',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'var(--surface-2)',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 10.5, fontWeight: 700, letterSpacing: '0.07em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-dim)',
+                }}>
+                  <span>#</span>
+                  <span>Source</span>
+                  <span>Trend</span>
+                  <span>Category</span>
+                  <span>Fit</span>
+                  <span>Activity</span>
+                  <span />
+                </div>
+
                 {pageTrends.map((trend, i) => (
                   <PulseRow
                     key={trend.id}
