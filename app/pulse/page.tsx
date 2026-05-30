@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import AppShell from '../components/AppShell';
 
 // ─── Types (mirrors Chunk 1 /pulse/trends/raw shape) ─────────────────────────
@@ -570,6 +571,7 @@ export default function PulsePage() {
   const [relevanceLoading, setRelevanceLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'relevant' | 'all'>('relevant');
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [brief, setBrief] = useState<string>('');
 
   // Chunk B — table layout state
   const PAGE_SIZE = 10;
@@ -597,6 +599,7 @@ export default function PulsePage() {
             format: p.content_format || '',
             styles: p.content_styles || [],
           };
+          setBrief(p.audience_brief || '');
         }
       })
       .catch(() => { /* best-effort */ })
@@ -852,9 +855,59 @@ export default function PulsePage() {
                       </span>
                     )}
                   </h1>
-                  <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', maxWidth: 620, margin: 0 }}>
-                    What&apos;s breaking out across the web in the last 24–72 hours. Ride a wave before it crests — niche-tailored angles unlock on each card.
+                  <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', maxWidth: 620, margin: '0 0 14px' }}>
+                    What&apos;s breaking out across the web — and where it fits your audience. Ride a wave before it crests.
                   </p>
+
+                  {/* Audience indicator (Chunk D) — shows what 'your audience' refers to */}
+                  {profileLoaded && brief && (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 9,
+                      background: 'var(--surface-2)', border: '1px solid var(--border)',
+                      borderRadius: 100, padding: '6px 12px 6px 11px',
+                      fontFamily: 'var(--font-ui)', fontSize: 12.5,
+                      maxWidth: '100%', minWidth: 0,
+                    }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                      </svg>
+                      <span style={{
+                        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.07em',
+                        textTransform: 'uppercase', color: 'var(--text-dim)', flexShrink: 0,
+                      }}>
+                        Your audience
+                      </span>
+                      <span style={{
+                        color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap', minWidth: 0, maxWidth: 460,
+                      }}
+                      title={brief}>
+                        {brief}
+                      </span>
+                      <Link href="/settings" style={{
+                        fontSize: 12, fontWeight: 600, color: 'var(--accent)',
+                        textDecoration: 'none', flexShrink: 0, marginLeft: 2,
+                      }}>
+                        Edit
+                      </Link>
+                    </div>
+                  )}
+                  {profileLoaded && !brief && (
+                    <Link href="/settings" style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      background: 'var(--accent-dim)', border: '1px solid var(--accent)',
+                      borderRadius: 100, padding: '7px 14px',
+                      fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                      color: 'var(--accent)', textDecoration: 'none',
+                    }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                      </svg>
+                      Set your audience to unlock fit scoring →
+                    </Link>
+                  )}
                 </div>
 
                 {/* View toggle */}
