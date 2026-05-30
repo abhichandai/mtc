@@ -91,7 +91,7 @@ function combineAndSort(google: PulseTrend[], reddit: PulseTrend[]): PulseTrend[
 
 // ─── Relevance ───────────────────────────────────────────────────────────────
 type Fit = 'high' | 'medium' | 'low';
-type RelevanceScore = { fit: Fit; bridge: string };
+type RelevanceScore = { fit: Fit };
 
 function fitStyle(fit: Fit): { dot: string; label: string; labelColor: string; bg: string } {
   switch (fit) {
@@ -215,28 +215,17 @@ function PulseCard({ trend, rank, relevance, relevanceLoading }: {
       {/* Relevance signal (Chunk 4) */}
       <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 11, marginTop: 2 }}>
         {relevance ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            <span style={{
-              alignSelf: 'flex-start',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)',
-              letterSpacing: '0.02em', color: fitStyle(relevance.fit).labelColor,
-              background: fitStyle(relevance.fit).bg, padding: '3px 9px', borderRadius: 100,
-            }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
-              {fitStyle(relevance.fit).label}
-            </span>
-            {relevance.bridge && (
-              <span style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)' }}>
-                {relevance.bridge}
-              </span>
-            )}
-          </div>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-ui)',
+            letterSpacing: '0.02em', color: fitStyle(relevance.fit).labelColor,
+            background: fitStyle(relevance.fit).bg, padding: '3px 9px', borderRadius: 100,
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: fitStyle(relevance.fit).dot, flexShrink: 0 }} />
+            {fitStyle(relevance.fit).label}
+          </span>
         ) : relevanceLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div className="pulse-shimmer" style={{ width: 78, height: 18, borderRadius: 100 }} />
-            <div className="pulse-shimmer" style={{ width: '90%', height: 12, borderRadius: 6 }} />
-          </div>
+          <div className="pulse-shimmer" style={{ width: 78, height: 18, borderRadius: 100 }} />
         ) : (
           <span style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-dim)', fontFamily: 'var(--font-ui)' }}>
             Relevance unavailable
@@ -513,7 +502,7 @@ export default function PulsePage() {
         const map: Record<string, RelevanceScore> = {};
         for (const s of data.scores) {
           if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
-            map[s.id] = { fit: s.fit, bridge: typeof s.bridge === 'string' ? s.bridge : '' };
+            map[s.id] = { fit: s.fit };
           }
         }
         setRelevance(map);
