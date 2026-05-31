@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 30;
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://mtc-backend-rust.vercel.app';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://mtc-backend-rust.vercel.app';
 
 export async function GET(req: NextRequest) {
   const query = req.nextUrl.searchParams.get('query') || '';
