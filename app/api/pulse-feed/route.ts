@@ -3,15 +3,15 @@ import { auth } from '@clerk/nextjs/server';
 import { supabase } from '@/lib/supabase';
 import { briefHash } from '@/lib/pulse';
 
-// E3: the read route the frontend will consume. Replaces today's
-// 'fetch Google + fetch Reddit + combine client-side' flow with a single
-// DB read from the master pool, plus the user's cached relevance scores
-// if they're still valid (master snapshot + brief both unchanged).
-//
-// Returns: trends + master_refresh_id + scores (or null on miss).
-// The frontend uses scores=null as the signal to call /api/pulse-relevance.
+// Returns: trends + master_refresh_id + scores (cached fits for trends in the pool).
+// Per-trend cache: with the 48h accumulation pool, trend IDs are stable across
+// cron cycles, so a trend keeps its fit score for its full lifetime as long as
+// the brief hasn't changed. scores may be partial — the frontend asks
+// pulse-relevance to score the remaining trends.
 
-export const maxDuration = 15; // pure DB reads — should be fast
+export const maxDuration = 15;
+
+type RawTrend = { id: string; [k: string]: unknown };
 
 export async function GET() {
   const { userId } = await auth();
@@ -31,8 +31,6 @@ export async function GET() {
     return NextResponse.json({ error: masterErr.message }, { status: 500 });
   }
   if (!master) {
-    // Bootstrap case — master pool has never been populated. Frontend can
-    // surface a friendly empty state; cron or manual refresh will fix it.
     return NextResponse.json({
       success: true,
       trends: [],
@@ -43,7 +41,7 @@ export async function GET() {
     });
   }
 
-  // 2. User's profile (for brief_hash comparison against the cached one)
+  // 2. User's profile for brief_hash
   const { data: profile } = await supabase
     .from('profiles')
     .select('audience_brief, platforms, content_format, content_styles')
@@ -57,18 +55,29 @@ export async function GET() {
     profile?.content_styles || []
   );
 
-  // 3. User's cache row, if any
-  const { data: cache } = await supabase
-    .from('user_relevance_cache')
-    .select('master_refresh_id, brief_hash, scores, scored_at')
-    .eq('user_id', userId)
-    .maybeSingle();
+  // 3. Look up cached fits for the trends in this snapshot
+  const trendIds = (master.trends as RawTrend[] || []).map(t => t.id);
 
-  // 4. Decide whether to serve cached scores
-  const cacheHit =
-    cache &&
-    cache.master_refresh_id === master.id &&
-    cache.brief_hash === currentBriefHash;
+  let cachedScores: Array<{ id: string; fit: string }> = [];
+  if (trendIds.length > 0) {
+    const { data: rows } = await supabase
+      .from('user_trend_relevance')
+      .select('trend_id, fit')
+      .eq('user_id', userId)
+      .eq('brief_hash', currentBriefHash)
+      .in('trend_id', trendIds);
+
+    cachedScores = (rows || []).map(r => ({ id: r.trend_id, fit: r.fit }));
+  }
+
+  // 4. Decide cache_state based on coverage
+  const total = trendIds.length;
+  const cached = cachedScores.length;
+  const cacheState =
+    total === 0 ? 'empty_master_pool' :
+    cached === 0 ? 'miss_no_cache' :
+    cached < total ? 'partial' :
+    'hit';
 
   return NextResponse.json({
     success: true,
@@ -78,12 +87,9 @@ export async function GET() {
     google_count: master.google_count,
     reddit_count: master.reddit_count,
     total_count: master.total_count,
-    scores: cacheHit ? cache!.scores : null,
-    scored_at: cacheHit ? cache!.scored_at : null,
-    cache_state: cacheHit
-      ? 'hit'
-      : cache
-        ? (cache.master_refresh_id !== master.id ? 'miss_stale_master' : 'miss_brief_changed')
-        : 'miss_no_cache',
+    scores: cachedScores,
+    cached_count: cached,
+    total_count_in_pool: total,
+    cache_state: cacheState,
   });
 }

@@ -38,7 +38,7 @@ type PulseFeedResponse = {
   total_count?: number;
   scores: Array<{ id: string; fit: string }> | null;
   scored_at?: string | null;
-  cache_state?: 'hit' | 'miss_stale_master' | 'miss_brief_changed' | 'miss_no_cache' | 'empty_master_pool';
+  cache_state?: 'hit' | 'partial' | 'miss_no_cache' | 'empty_master_pool';
   error?: string;
 };
 
@@ -899,12 +899,12 @@ export default function PulsePage() {
   // Restore persisted category filter after mount (avoids SSR mismatch)
   useEffect(() => { setHiddenCats(loadHiddenCategories()); }, []);
 
-  // E4/E5: Score trends server-side against the master pool. Server reads
-  // trends from the master_refresh_id snapshot, returns scores, and writes
-  // them to user_relevance_cache so subsequent /api/pulse-feed calls hit
-  // the cache directly (no Sonnet roundtrip needed).
-  const scoreRelevance = useCallback(async (masterRefreshId: number) => {
-    setRelevance({});
+  // Score relevance for the trends that don't have a cached fit yet.
+  // missingIds=null means score everything (e.g. brief changed); a non-empty
+  // array means only score those, and merge results into existing state.
+  const scoreRelevance = useCallback(async (masterRefreshId: number, missingIds: string[] | null) => {
+    // Only clear state on a full re-score. On a partial fill, keep existing fits.
+    if (missingIds === null) setRelevance({});
     setRelevanceLoading(true);
     try {
       const ctx = creatorCtxRef.current;
@@ -917,17 +917,20 @@ export default function PulsePage() {
           platforms: ctx.platforms,
           content_format: ctx.format,
           content_styles: ctx.styles,
+          ...(missingIds ? { missing_ids: missingIds } : {}),
         }),
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.scores)) {
-        const map: Record<string, RelevanceScore> = {};
-        for (const s of data.scores) {
-          if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
-            map[s.id] = { fit: s.fit };
+        setRelevance(prev => {
+          const next = missingIds === null ? {} : { ...prev };
+          for (const s of data.scores) {
+            if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
+              next[s.id] = { fit: s.fit };
+            }
           }
-        }
-        setRelevance(map);
+          return next;
+        });
       }
     } catch { /* leave unscored — cards render without a signal */ }
     finally { setRelevanceLoading(false); }
@@ -956,8 +959,9 @@ export default function PulsePage() {
 
       setResult(data);
 
-      // If scores came back in the response (cache hit), apply them and
-      // skip the relevance call entirely. This is the fast path.
+      // Apply whatever cached scores came back. cache_state tells us if we
+      // have everything ('hit'), nothing ('miss_no_cache'), or a subset ('partial').
+      // The scoring trigger useEffect below will request the missing ones.
       if (data.scores && data.scores.length > 0) {
         const map: Record<string, RelevanceScore> = {};
         for (const s of data.scores) {
@@ -967,9 +971,7 @@ export default function PulsePage() {
         }
         setRelevance(map);
       } else {
-        // Cache miss — clear stale scores so the shimmer shows on existing rows.
-        // Actual scoring happens in the scoring-trigger useEffect below, once
-        // we know the profile is loaded (so the brief is available).
+        // No cached scores at all — clear so the shimmer shows on existing rows.
         setRelevance({});
       }
     } catch {
@@ -986,14 +988,23 @@ export default function PulsePage() {
   const masterRefreshId = result?.master_refresh_id ?? null;
   const cacheState = result?.cache_state;
 
-  // Trigger scoring ONLY on cache miss. Wait for the profile so the brief
-  // is in hand before we call the scorer (avoids the 'no_brief' fallback).
+  // Trigger scoring for trends that don't have a cached fit yet. Waits for
+  // the profile so brief is in hand. With per-trend caching, only newly-merged
+  // trends typically need scoring on each refresh — not the whole pool.
   useEffect(() => {
     if (!profileLoaded) return;
     if (!masterRefreshId) return;
-    if (cacheState === 'hit') return; // scores already applied from the feed response
+    if (cacheState === 'hit') return; // all trends already have cached fits
     if (trends.length === 0) return;
-    scoreRelevance(masterRefreshId);
+
+    // Determine which trend IDs are missing a fit
+    const missingIds = trends.filter(t => !relevance[t.id]).map(t => t.id);
+    if (missingIds.length === 0) return; // nothing to score
+    scoreRelevance(masterRefreshId, missingIds);
+    // We intentionally omit `relevance` from deps — we only want to fire once
+    // when the feed lands. After scoring writes, relevance updates and we don't
+    // want to re-fire and clobber it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileLoaded, masterRefreshId, cacheState, trends.length, scoreRelevance]);
 
 

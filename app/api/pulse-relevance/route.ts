@@ -93,15 +93,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: masterErr.message }, { status: 500 });
       }
       if (!master) {
-        // Snapshot was pruned between pulse-feed reading it and us trying
-        // to score it — frontend should re-fetch /api/pulse-feed for the
-        // current master_refresh_id.
         return NextResponse.json(
           { error: 'master_refresh_id no longer exists', code: 'stale_snapshot' },
           { status: 410 }
         );
       }
-      trends = Array.isArray(master.trends) ? (master.trends as IncomingTrend[]) : [];
+      const allTrends = Array.isArray(master.trends) ? (master.trends as IncomingTrend[]) : [];
+
+      // If client passed a list of trend IDs that need scoring, only score those.
+      // Otherwise score all (e.g. brief just changed, full re-score needed).
+      const missingIds: string[] | null = Array.isArray(body?.missing_ids) ? body.missing_ids : null;
+      trends = missingIds
+        ? allTrends.filter(t => missingIds.includes(t.id))
+        : allTrends;
     } else {
       // Legacy flow — trends come from the client
       trends = Array.isArray(body?.trends) ? body.trends : [];
@@ -188,23 +192,24 @@ Score every topic for THIS creator and return the JSON array.`;
       return NextResponse.json({ success: true, scores: [], note: 'parse_failed' });
     }
 
-    // E4: write the cache row so subsequent /api/pulse-feed calls return
-    // these scores directly. Only writes when we used the master_refresh_id
-    // path AND have a userId AND produced real scores (don't cache empty/fallback).
+    // Per-trend cache write: one row per (user, trend, brief). With stable
+    // trend IDs across the 48h pool, these rows survive cron refreshes and
+    // subsequent pulse-feed reads pull cached fits directly.
     if (masterRefreshId !== null && userId && scores.length > 0) {
       const hash = briefHash(brief, platforms, format, styles);
-      // Best-effort upsert — a failed cache write shouldn't fail the response.
+      const now = new Date().toISOString();
+      const rows = scores.map(s => ({
+        user_id: userId,
+        trend_id: s.id,
+        brief_hash: hash,
+        fit: s.fit,
+        scored_at: now,
+      }));
       const { error: cacheErr } = await supabase
-        .from('user_relevance_cache')
-        .upsert({
-          user_id: userId,
-          master_refresh_id: masterRefreshId,
-          brief_hash: hash,
-          scores: scores,
-          scored_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
+        .from('user_trend_relevance')
+        .upsert(rows, { onConflict: 'user_id,trend_id,brief_hash' });
       if (cacheErr) {
-        console.error('pulse-relevance cache upsert failed:', cacheErr);
+        console.error('pulse-relevance per-trend cache upsert failed:', cacheErr);
       }
     }
 

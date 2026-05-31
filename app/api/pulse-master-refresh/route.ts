@@ -74,8 +74,9 @@ function mergePool(existing: RawTrend[], incoming: RawTrend[], now: string): Raw
     const key = mergeKey(t);
     const prev = pool.get(key);
     if (prev) {
-      // Keep original first_seen_at, update everything else
-      pool.set(key, { ...t, first_seen_at: prev.first_seen_at || now });
+      // Preserve original id + first_seen_at so the trend has stable identity
+      // for the full 48h. Everything else (metrics, breakdowns) takes the fresh value.
+      pool.set(key, { ...t, id: prev.id, first_seen_at: prev.first_seen_at || now });
     } else {
       pool.set(key, { ...t, first_seen_at: now });
     }
