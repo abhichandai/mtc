@@ -348,7 +348,7 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   }, [onClose]);
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
         padding: '16px 20px', borderBottom: '1px solid var(--border)',
