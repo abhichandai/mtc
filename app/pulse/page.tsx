@@ -290,6 +290,7 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   const [localBridge, setLocalBridge] = useState(bridge || '');
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [localEnrichment, setLocalEnrichment] = useState<EnrichmentData | null>(enrichment || null);
+  const [collapsedPlatforms, setCollapsedPlatforms] = useState<Set<string>>(new Set());
 
   const handleUnlock = () => {
     if (enrichLoading || localEnrichment) return;
@@ -579,17 +580,34 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
               if (!platform || platform.items.length === 0) return null;
               return (
                 <div key={platformKey}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
-                    fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
-                    color: 'var(--text-dim)', fontFamily: 'var(--font-ui)',
-                  }}>
+                  <button
+                    onClick={() => setCollapsedPlatforms(prev => {
+                      const next = new Set(prev);
+                      next.has(platformKey) ? next.delete(platformKey) : next.add(platformKey);
+                      return next;
+                    })}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, marginBottom: collapsedPlatforms.has(platformKey) ? 0 : 10,
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
+                      color: 'var(--text-dim)', fontFamily: 'var(--font-ui)',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      padding: '4px 0', width: '100%', textAlign: 'left',
+                    }}
+                  >
                     <PlatformIcon platform={platformKey} size={15} />
                     {platform.name}
                     <span style={{ fontWeight: 500, fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', textTransform: 'none' }}>
                       {platform.items.length} result{platform.items.length !== 1 ? 's' : ''}
                     </span>
-                  </div>
+                    <svg
+                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                      style={{ marginLeft: 'auto', transition: 'transform 0.15s ease', transform: collapsedPlatforms.has(platformKey) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                    >
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </button>
+                  {!collapsedPlatforms.has(platformKey) && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {platform.items.map((item, idx) => (
                       <a
@@ -631,6 +649,7 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                       </a>
                     ))}
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -1277,8 +1296,8 @@ export default function PulsePage() {
             position: 'fixed',
             top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 'min(720px, 95vw)',
-            maxHeight: 'min(85vh, 760px)',
+            width: 'min(1100px, 95vw)',
+            maxHeight: '95vh',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
             borderRadius: 16,
