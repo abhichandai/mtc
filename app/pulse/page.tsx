@@ -793,6 +793,14 @@ export default function PulsePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTrend, setSelectedTrend] = useState<PulseTrend | null>(null);
   const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (selectedTrend) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [selectedTrend]);
   const [bridgeCache, setBridgeCache] = useState<Record<string, string>>({});
   const [enrichmentCache, setEnrichmentCache] = useState<Record<string, EnrichmentData>>({});
 
