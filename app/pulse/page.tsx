@@ -87,6 +87,28 @@ function trendSource(t: PulseTrend): TrendSource {
 type Fit = 'high' | 'medium' | 'low';
 type RelevanceScore = { fit: Fit };
 
+type EnrichmentItem = {
+  title: string;
+  author: string;
+  author_handle?: string;
+  author_url?: string;
+  url: string;
+  likes?: number;
+  comments?: number;
+  plays?: number;
+  views?: number;
+  shares?: number;
+  followers?: number;
+  is_short?: boolean;
+};
+
+type EnrichmentPlatform = {
+  name: string;
+  items: EnrichmentItem[];
+};
+
+type EnrichmentData = Record<string, EnrichmentPlatform>;
+
 function fitStyle(fit: Fit): { dot: string; label: string; labelColor: string; bg: string } {
   switch (fit) {
     case 'high':   return { dot: 'var(--accent)',   label: 'High fit',   labelColor: 'var(--accent)',     bg: 'var(--accent-dim)' };
@@ -113,6 +135,45 @@ function SourceLogo({ source, size = 18 }: { source: TrendSource; size?: number 
       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1a11 11 0 0 0-9.82 6.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" fill="#EA4335"/>
     </svg>
   );
+}
+
+// ─── Platform icons for enrichment display ───────────────────────────────────
+function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number }) {
+  switch (platform) {
+    case 'tiktok':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="var(--text)" style={{ flexShrink: 0 }} aria-label="TikTok">
+          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.51a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3.15 15a6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.72A8.18 8.18 0 0 0 20.59 10V6.53a4.83 4.83 0 0 1-1-.16z"/>
+        </svg>
+      );
+    case 'youtube':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="#FF0000" style={{ flexShrink: 0 }} aria-label="YouTube">
+          <path d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.38.55A3.02 3.02 0 0 0 .5 6.19 31.6 31.6 0 0 0 0 12a31.6 31.6 0 0 0 .5 5.81 3.02 3.02 0 0 0 2.12 2.14c1.88.55 9.38.55 9.38.55s7.5 0 9.38-.55a3.02 3.02 0 0 0 2.12-2.14A31.6 31.6 0 0 0 24 12a31.6 31.6 0 0 0-.5-5.81zM9.75 15.02V8.98L15.5 12l-5.75 3.02z"/>
+        </svg>
+      );
+    case 'instagram':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="url(#ig-grad)" style={{ flexShrink: 0 }} aria-label="Instagram">
+          <defs>
+            <linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#feda75"/><stop offset="25%" stopColor="#fa7e1e"/>
+              <stop offset="50%" stopColor="#d62976"/><stop offset="75%" stopColor="#962fbf"/>
+              <stop offset="100%" stopColor="#4f5bd5"/>
+            </linearGradient>
+          </defs>
+          <path d="M12 2.16c2.71 0 3.06.01 4.12.06 1.07.05 1.65.22 2.04.36.51.2.88.44 1.26.82.38.38.62.75.82 1.26.14.39.31.97.36 2.04.05 1.06.06 1.41.06 4.12s-.01 3.06-.06 4.12c-.05 1.07-.22 1.65-.36 2.04-.2.51-.44.88-.82 1.26-.38.38-.75.62-1.26.82-.39.14-.97.31-2.04.36-1.06.05-1.41.06-4.12.06s-3.06-.01-4.12-.06c-1.07-.05-1.65-.22-2.04-.36a3.4 3.4 0 0 1-1.26-.82 3.4 3.4 0 0 1-.82-1.26c-.14-.39-.31-.97-.36-2.04C2.17 15.06 2.16 14.71 2.16 12s.01-3.06.06-4.12c.05-1.07.22-1.65.36-2.04.2-.51.44-.88.82-1.26.38-.38.75-.62 1.26-.82.39-.14.97-.31 2.04-.36C7.76 2.17 8.11 2.16 12 2.16zM12 0C9.24 0 8.85.01 7.78.06 6.71.11 5.97.3 5.32.57a5.56 5.56 0 0 0-2.01 1.31A5.56 5.56 0 0 0 2 3.89c-.27.65-.46 1.39-.51 2.46C1.44 7.42 1.43 7.81 1.43 12s.01 4.58.06 5.65c.05 1.07.24 1.81.51 2.46a5.56 5.56 0 0 0 1.31 2.01 5.56 5.56 0 0 0 2.01 1.31c.65.27 1.39.46 2.46.51C8.85 24 9.24 24 12 24s3.15-.01 4.22-.06c1.07-.05 1.81-.24 2.46-.51a5.56 5.56 0 0 0 2.01-1.31 5.56 5.56 0 0 0 1.31-2.01c.27-.65.46-1.39.51-2.46.05-1.07.06-1.46.06-5.65s-.01-4.58-.06-5.65c-.05-1.07-.24-1.81-.51-2.46A5.56 5.56 0 0 0 20.68 1.88 5.56 5.56 0 0 0 18.67.57C18.02.3 17.28.11 16.21.06 15.15.01 14.76 0 12 0zm0 5.84a6.16 6.16 0 1 0 0 12.32 6.16 6.16 0 0 0 0-12.32zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.41-11.85a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/>
+        </svg>
+      );
+    case 'linkedin':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="#0A66C2" style={{ flexShrink: 0 }} aria-label="LinkedIn">
+          <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/>
+        </svg>
+      );
+    default:
+      return null;
+  }
 }
 
 // ─── Pulse Row (Chunk B — table layout, click to open detail modal) ──────────
@@ -213,18 +274,40 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
 }
 
 // ─── Pulse Trend Detail Modal (matches the dashboard AIE drawer pattern) ─────
-function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx }: {
+function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx, enrichment, onEnrichmentLoaded }: {
   trend: PulseTrend;
   relevance?: RelevanceScore;
   onClose: () => void;
   bridge?: string;
   onBridgeLoaded?: (trendId: string, bridge: string) => void;
   creatorCtx?: { brief: string; platforms: string[]; format: string; styles: string[] };
+  enrichment?: EnrichmentData;
+  onEnrichmentLoaded?: (trendId: string, data: EnrichmentData) => void;
 }) {
   const source = trendSource(trend);
   const category = trend.categories?.[0] || 'Trending';
   const [bridgeLoading, setBridgeLoading] = useState(false);
   const [localBridge, setLocalBridge] = useState(bridge || '');
+  const [enrichLoading, setEnrichLoading] = useState(false);
+  const [localEnrichment, setLocalEnrichment] = useState<EnrichmentData | null>(enrichment || null);
+
+  const handleUnlock = () => {
+    if (enrichLoading || localEnrichment) return;
+    setEnrichLoading(true);
+    fetch(`/api/pulse-unlock?query=${encodeURIComponent(trend.query)}&limit=5`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.platforms) {
+          setLocalEnrichment(d.platforms);
+          onEnrichmentLoaded?.(trend.id, d.platforms);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setEnrichLoading(false));
+  };
+
+  // Sync if parent cache updates
+  useEffect(() => { if (enrichment) setLocalEnrichment(enrichment); }, [enrichment]);
 
   // Fetch bridge on mount if not cached
   useEffect(() => {
@@ -457,25 +540,102 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
           )}
         </div>
 
-        {/* Unlock button — placeholder for Chunk F2 enrichment */}
-        <button
-          disabled
-          style={{
-            width: '100%', padding: '14px 20px',
-            background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.06))',
-            border: '1px solid rgba(139,92,246,0.2)',
-            borderRadius: 12, cursor: 'not-allowed',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            fontFamily: 'var(--font-ui)', fontSize: 13.5, fontWeight: 700,
-            color: 'var(--accent)', letterSpacing: '0.01em',
-            opacity: 0.6,
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
-          </svg>
-          See what platforms are saying — coming soon
-        </button>
+        {/* Unlock button + enrichment content */}
+        {!localEnrichment ? (
+          <button
+            onClick={handleUnlock}
+            disabled={enrichLoading}
+            style={{
+              width: '100%', padding: '14px 20px',
+              background: enrichLoading
+                ? 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.04))'
+                : 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(139,92,246,0.08))',
+              border: '1px solid rgba(139,92,246,0.25)',
+              borderRadius: 12, cursor: enrichLoading ? 'wait' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              fontFamily: 'var(--font-ui)', fontSize: 13.5, fontWeight: 700,
+              color: 'var(--accent)', letterSpacing: '0.01em',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {enrichLoading ? (
+              <>
+                <span className="pulse-shimmer" style={{ width: 16, height: 16, borderRadius: 4, display: 'inline-block' }} />
+                Searching across platforms…
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+                See what platforms are saying
+              </>
+            )}
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {(['tiktok', 'youtube', 'instagram', 'linkedin'] as const).map(platformKey => {
+              const platform = localEnrichment[platformKey];
+              if (!platform || platform.items.length === 0) return null;
+              return (
+                <div key={platformKey}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
+                    color: 'var(--text-dim)', fontFamily: 'var(--font-ui)',
+                  }}>
+                    <PlatformIcon platform={platformKey} size={15} />
+                    {platform.name}
+                    <span style={{ fontWeight: 500, fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', textTransform: 'none' }}>
+                      {platform.items.length} result{platform.items.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {platform.items.map((item, idx) => (
+                      <a
+                        key={idx}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex', flexDirection: 'column', gap: 4,
+                          padding: '10px 14px',
+                          background: 'var(--surface-2)', borderRadius: 10,
+                          border: '1px solid var(--border)',
+                          textDecoration: 'none', color: 'var(--text)',
+                          transition: 'border-color 0.15s ease',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                      >
+                        <span style={{
+                          fontSize: 13, fontWeight: 600, lineHeight: 1.4,
+                          fontFamily: 'var(--font-ui)',
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        }}>
+                          {item.title}
+                        </span>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)',
+                        }}>
+                          <span style={{ fontWeight: 600 }}>{item.author}</span>
+                          {(item.likes != null && item.likes > 0) && <span>{formatVolume(item.likes)} likes</span>}
+                          {(item.views != null && item.views > 0) && <span>{formatVolume(item.views)} views</span>}
+                          {(item.plays != null && item.plays > 0) && <span>{formatVolume(item.plays)} plays</span>}
+                          {(item.comments != null && item.comments > 0) && <span>{formatVolume(item.comments)} comments</span>}
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                            <path d="M7 17L17 7M7 7h10v10"/>
+                          </svg>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -634,6 +794,7 @@ export default function PulsePage() {
   const [selectedTrend, setSelectedTrend] = useState<PulseTrend | null>(null);
   const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
   const [bridgeCache, setBridgeCache] = useState<Record<string, string>>({});
+  const [enrichmentCache, setEnrichmentCache] = useState<Record<string, EnrichmentData>>({});
 
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
@@ -1129,6 +1290,8 @@ export default function PulsePage() {
               bridge={bridgeCache[selectedTrend.id]}
               onBridgeLoaded={(id, b) => setBridgeCache(prev => ({ ...prev, [id]: b }))}
               creatorCtx={creatorCtxRef.current}
+              enrichment={enrichmentCache[selectedTrend.id]}
+              onEnrichmentLoaded={(id, data) => setEnrichmentCache(prev => ({ ...prev, [id]: data }))}
             />
           </div>
         </>
