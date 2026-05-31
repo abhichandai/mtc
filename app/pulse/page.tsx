@@ -27,14 +27,17 @@ type PulseTrend = {
   sortVelocity?: number;           // unified 0–1 sort key, computed client-side
 };
 
-type PulseResult = {
+type PulseFeedResponse = {
   success: boolean;
-  source?: string;
-  geo?: string;
-  fetched_at?: string;
-  count?: number;
-  total_active_available?: number;
-  trends?: PulseTrend[];
+  trends: PulseTrend[];
+  master_refresh_id: number | null;
+  refreshed_at: string | null;
+  google_count?: number;
+  reddit_count?: number;
+  total_count?: number;
+  scores: Array<{ id: string; fit: string }> | null;
+  scored_at?: string | null;
+  cache_state?: 'hit' | 'miss_stale_master' | 'miss_brief_changed' | 'miss_no_cache' | 'empty_master_pool';
   error?: string;
 };
 
@@ -78,16 +81,6 @@ function timeAgo(iso?: string): string {
 // ─── Multi-source (Chunk 2) ──────────────────────────────────────────────────
 function trendSource(t: PulseTrend): TrendSource {
   return t.source === 'reddit' ? 'reddit' : 'google';
-}
-
-// Give every trend a unified 0–1 sort key so the two feeds interleave fairly.
-// Reddit already arrives normalised (t.velocity); Google is normalised here by
-// search_volume within the Google set. Top item of each source ≈ 1.0.
-function combineAndSort(google: PulseTrend[], reddit: PulseTrend[]): PulseTrend[] {
-  const maxGV = Math.max(1, ...google.map(t => t.search_volume || 0));
-  const g = google.map(t => ({ ...t, source: 'google' as TrendSource, sortVelocity: (t.search_volume || 0) / maxGV }));
-  const r = reddit.map(t => ({ ...t, source: 'reddit' as TrendSource, sortVelocity: t.velocity ?? 0 }));
-  return [...g, ...r].sort((a, b) => (b.sortVelocity ?? 0) - (a.sortVelocity ?? 0));
 }
 
 // ─── Relevance ───────────────────────────────────────────────────────────────
@@ -528,42 +521,9 @@ function trendCategory(t: PulseTrend): string {
   return t.categories?.[0] || 'Trending';
 }
 
-// ─── Relevance cache (4h TTL, matches dashboard) ─────────────────────────────
-const RELEVANCE_TTL_MS = 4 * 60 * 60 * 1000;
-const RELEVANCE_PREFIX = 'mtc_pulse_relevance_';
-
-function hashStr(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) { h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; }
-  return String(h >>> 0);
-}
-
-function relevanceKey(trends: PulseTrend[]): string {
-  return RELEVANCE_PREFIX + hashStr(trends.map(t => t.id).sort().join('|'));
-}
-
-function loadRelevanceCache(trends: PulseTrend[]): Record<string, RelevanceScore> | null {
-  try {
-    const raw = localStorage.getItem(relevanceKey(trends));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (Date.now() - parsed.savedAt > RELEVANCE_TTL_MS) {
-      localStorage.removeItem(relevanceKey(trends));
-      return null;
-    }
-    return parsed.scores;
-  } catch { return null; }
-}
-
-function saveRelevanceCache(trends: PulseTrend[], scores: Record<string, RelevanceScore>) {
-  try {
-    localStorage.setItem(relevanceKey(trends), JSON.stringify({ scores, savedAt: Date.now() }));
-  } catch { /* ignore */ }
-}
-
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function PulsePage() {
-  const [result, setResult] = useState<PulseResult | null>(null);
+  const [result, setResult] = useState<PulseFeedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiddenCats, setHiddenCats] = useState<Set<string>>(new Set());
@@ -609,13 +569,11 @@ export default function PulsePage() {
   // Restore persisted category filter after mount (avoids SSR mismatch)
   useEffect(() => { setHiddenCats(loadHiddenCategories()); }, []);
 
-  // Score trends for relevance — cache-first, Sonnet on miss. Sends creator
-  // context (brief etc.) in the body; the route keeps prompt + API key server-side.
-  const scoreRelevance = useCallback(async (trendList: PulseTrend[]) => {
-    if (trendList.length === 0) return;
-    const cached = loadRelevanceCache(trendList);
-    if (cached) { setRelevance(cached); return; }
-
+  // E4/E5: Score trends server-side against the master pool. Server reads
+  // trends from the master_refresh_id snapshot, returns scores, and writes
+  // them to user_relevance_cache so subsequent /api/pulse-feed calls hit
+  // the cache directly (no Sonnet roundtrip needed).
+  const scoreRelevance = useCallback(async (masterRefreshId: number) => {
     setRelevance({});
     setRelevanceLoading(true);
     try {
@@ -624,13 +582,11 @@ export default function PulsePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          master_refresh_id: masterRefreshId,
           brief: ctx.brief,
           platforms: ctx.platforms,
           content_format: ctx.format,
           content_styles: ctx.styles,
-          trends: trendList.map(t => ({
-            id: t.id, query: t.query, categories: t.categories, trend_breakdown: t.trend_breakdown,
-          })),
         }),
       });
       const data = await res.json();
@@ -642,65 +598,73 @@ export default function PulsePage() {
           }
         }
         setRelevance(map);
-        // Only cache real scores — never cache an all-neutral fallback
-        if (data.note !== 'no_brief' && data.note !== 'parse_failed' && Object.keys(map).length > 0) {
-          saveRelevanceCache(trendList, map);
-        }
       }
     } catch { /* leave unscored — cards render without a signal */ }
     finally { setRelevanceLoading(false); }
   }, []);
 
-  const fetchTrends = useCallback(async (forceRefresh = false) => {
+  // E5: Single fetch to /api/pulse-feed. Server returns the latest master
+  // pool snapshot + the user's cached scores (if still valid). On a cache
+  // hit, scores arrive in the same response — no second Sonnet call needed.
+  // On a miss, we fire pulse-relevance to score + write the cache row.
+  const fetchTrends = useCallback(async () => {
     setLoading(true);
     setError(null);
-    if (forceRefresh) { try { localStorage.removeItem(relevanceKey(result?.trends || [])); } catch { /* ignore */ } }
     try {
-      // Fetch Google + Reddit in parallel. Tolerate one source failing —
-      // show whatever came back; only error if BOTH are empty.
-      const [gRes, rRes] = await Promise.allSettled([
-        fetch('/api/pulse-trends?geo=US&limit=24'),
-        fetch('/api/pulse-reddit?limit=24'),
-      ]);
+      const res = await fetch('/api/pulse-feed');
+      const data: PulseFeedResponse = await res.json();
 
-      let google: PulseTrend[] = [];
-      let reddit: PulseTrend[] = [];
-      if (gRes.status === 'fulfilled') {
-        try { const d: PulseResult = await gRes.value.json(); if (d.success) google = d.trends || []; } catch { /* ignore */ }
-      }
-      if (rRes.status === 'fulfilled') {
-        try { const d: PulseResult = await rRes.value.json(); if (d.success) reddit = d.trends || []; } catch { /* ignore */ }
-      }
-
-      if (google.length === 0 && reddit.length === 0) {
+      if (!data.success) {
         setError('Could not load trends right now.');
+        return;
+      }
+      if (data.cache_state === 'empty_master_pool') {
+        setResult(data);
+        setError('Trends are still warming up. Check back in a few minutes.');
+        return;
+      }
+
+      setResult(data);
+
+      // If scores came back in the response (cache hit), apply them and
+      // skip the relevance call entirely. This is the fast path.
+      if (data.scores && data.scores.length > 0) {
+        const map: Record<string, RelevanceScore> = {};
+        for (const s of data.scores) {
+          if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
+            map[s.id] = { fit: s.fit as Fit };
+          }
+        }
+        setRelevance(map);
       } else {
-        const combined = combineAndSort(google, reddit);
-        if (forceRefresh) { try { localStorage.removeItem(relevanceKey(combined)); } catch { /* ignore */ } }
-        setResult({
-          success: true,
-          source: 'google+reddit',
-          fetched_at: new Date().toISOString(),
-          count: combined.length,
-          trends: combined,
-        });
+        // Cache miss — clear stale scores so the shimmer shows on existing rows.
+        // Actual scoring happens in the scoring-trigger useEffect below, once
+        // we know the profile is loaded (so the brief is available).
+        setRelevance({});
       }
     } catch {
       setError('Could not load trends right now.');
     } finally {
       setLoading(false);
     }
-  }, [result]);
+  }, []);
 
-  useEffect(() => { fetchTrends(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchTrends(); }, []);
 
   const trends = useMemo(() => result?.trends || [], [result]);
+  const masterRefreshId = result?.master_refresh_id ?? null;
+  const cacheState = result?.cache_state;
 
-  // Score relevance once BOTH the trend set and the profile are ready, so the
-  // brief is always available when we call the scorer (avoids the no-brief path).
+  // Trigger scoring ONLY on cache miss. Wait for the profile so the brief
+  // is in hand before we call the scorer (avoids the 'no_brief' fallback).
   useEffect(() => {
-    if (profileLoaded && trends.length > 0) scoreRelevance(trends);
-  }, [profileLoaded, trends, scoreRelevance]);
+    if (!profileLoaded) return;
+    if (!masterRefreshId) return;
+    if (cacheState === 'hit') return; // scores already applied from the feed response
+    if (trends.length === 0) return;
+    scoreRelevance(masterRefreshId);
+  }, [profileLoaded, masterRefreshId, cacheState, trends.length, scoreRelevance]);
 
 
   // Categories present in the current feed (unique, sorted)
@@ -787,9 +751,9 @@ export default function PulsePage() {
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {result?.fetched_at && !loading && (
+            {result?.refreshed_at && !loading && (
               <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                Refreshed {timeAgo(result.fetched_at)}
+                Refreshed {timeAgo(result.refreshed_at)}
               </span>
             )}
             {!loading && !error && availableCategories.length > 0 && (
@@ -801,7 +765,7 @@ export default function PulsePage() {
                 onHideAll={hideAllCategories}
               />
             )}
-            <button className="btn-ghost" onClick={() => fetchTrends(true)} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
+            <button className="btn-ghost" onClick={() => fetchTrends()} disabled={loading} style={{ fontSize: 12, padding: '6px 12px' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                 style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
                 <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
@@ -833,7 +797,7 @@ export default function PulsePage() {
               <p style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)', margin: '0 0 20px' }}>
                 The trends service may be warming up. Try again in a moment.
               </p>
-              <button className="btn-ghost" onClick={() => fetchTrends(true)} style={{ fontSize: 13, padding: '8px 16px' }}>
+              <button className="btn-ghost" onClick={() => fetchTrends()} style={{ fontSize: 13, padding: '8px 16px' }}>
                 Try again
               </button>
             </div>
