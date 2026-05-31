@@ -3,12 +3,18 @@ import { supabase } from '@/lib/supabase';
 
 // This route is invoked by Vercel cron (every 4h). It can also be called
 // manually with the CRON_SECRET in the Authorization header for verification.
-// Auth follows the Vercel-cron-recommended pattern: a shared secret.
+//
+// Accumulation model (48h rolling window):
+// Each refresh merges new trends into the existing pool rather than replacing
+// it. Trends carry a `first_seen_at` timestamp from their first appearance.
+// Existing trends get updated metrics but keep their original first_seen_at.
+// Anything older than RETENTION_HOURS is pruned from the pool.
 
 export const maxDuration = 60; // Reddit fan-out + Google fetch + DB write
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'https://mtc-backend-rust.vercel.app';
 const KEEP_SNAPSHOTS = 2; // current + previous, for race-safety
+const RETENTION_HOURS = 48; // trends older than this are pruned
 
 type RawTrend = {
   id: string;
@@ -27,18 +33,56 @@ type RawTrend = {
   subreddit?: string | null;
   permalink?: string | null;
   sortVelocity?: number;
+  first_seen_at?: string;
 };
 
+/** Stable merge key: source + lowercased query */
+function mergeKey(t: RawTrend): string {
+  return `${t.source || 'google'}:${t.query.toLowerCase().trim()}`;
+}
+
 /**
- * Mirrors the frontend's combineAndSort. Reddit trends already carry a 0-1
- * `velocity`; Google trends get one derived from search_volume within the
- * Google set so the two feeds interleave fairly on a unified sort key.
+ * Tag incoming trends with source + sortVelocity (same logic as before).
  */
-function combineAndSort(google: RawTrend[], reddit: RawTrend[]): RawTrend[] {
+function tagIncoming(google: RawTrend[], reddit: RawTrend[]): RawTrend[] {
   const maxGV = Math.max(1, ...google.map(t => t.search_volume || 0));
   const g = google.map(t => ({ ...t, source: 'google' as const, sortVelocity: (t.search_volume || 0) / maxGV }));
   const r = reddit.map(t => ({ ...t, source: 'reddit' as const, sortVelocity: t.velocity ?? 0 }));
-  return [...g, ...r].sort((a, b) => (b.sortVelocity ?? 0) - (a.sortVelocity ?? 0));
+  return [...g, ...r];
+}
+
+/**
+ * Merge incoming trends into the existing pool.
+ * - Existing trend matched by mergeKey → update metrics, keep first_seen_at
+ * - New trend → add with first_seen_at = now
+ * - Trends older than RETENTION_HOURS → pruned
+ * Returns the merged pool sorted by sortVelocity (descending).
+ */
+function mergePool(existing: RawTrend[], incoming: RawTrend[], now: string): RawTrend[] {
+  const cutoff = Date.now() - RETENTION_HOURS * 60 * 60 * 1000;
+
+  // Seed pool with existing trends that haven't expired
+  const pool = new Map<string, RawTrend>();
+  for (const t of existing) {
+    if (t.first_seen_at && new Date(t.first_seen_at).getTime() < cutoff) continue;
+    // Backfill first_seen_at for trends from before accumulation was enabled
+    pool.set(mergeKey(t), t.first_seen_at ? t : { ...t, first_seen_at: now });
+  }
+
+  // Merge incoming: update metrics for known trends, add new ones
+  for (const t of incoming) {
+    const key = mergeKey(t);
+    const prev = pool.get(key);
+    if (prev) {
+      // Keep original first_seen_at, update everything else
+      pool.set(key, { ...t, first_seen_at: prev.first_seen_at || now });
+    } else {
+      pool.set(key, { ...t, first_seen_at: now });
+    }
+  }
+
+  return Array.from(pool.values())
+    .sort((a, b) => (b.sortVelocity ?? 0) - (a.sortVelocity ?? 0));
 }
 
 async function fetchSource(url: string): Promise<RawTrend[]> {
@@ -53,8 +97,6 @@ async function fetchSource(url: string): Promise<RawTrend[]> {
 }
 
 export async function GET(req: NextRequest) {
-  // Auth: Vercel cron sends Authorization: Bearer <CRON_SECRET>. Manual
-  // verification can pass the same header. No Clerk — this is a system route.
   const expectedSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get('authorization');
   if (!expectedSecret) {
@@ -67,8 +109,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Fetch both sources in parallel. Tolerate one failing — same posture as
-  // the frontend currently has.
+  // 1. Fetch both sources in parallel
   const [google, reddit] = await Promise.all([
     fetchSource(`${BACKEND_URL}/pulse/trends/raw?geo=US&limit=24`),
     fetchSource(`${BACKEND_URL}/pulse/trends/reddit?limit=24`),
@@ -81,16 +122,33 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const trends = combineAndSort(google, reddit);
+  // 2. Read the latest snapshot to get the existing pool
+  const { data: latest } = await supabase
+    .from('pulse_trends_master')
+    .select('trends')
+    .order('refreshed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  // Insert the new snapshot
+  const existingPool: RawTrend[] = (latest?.trends as RawTrend[]) || [];
+
+  // 3. Tag incoming trends with source + sortVelocity, then merge
+  const now = new Date().toISOString();
+  const incoming = tagIncoming(google, reddit);
+  const merged = mergePool(existingPool, incoming, now);
+
+  // Count how many from each source are in the final pool
+  const googleInPool = merged.filter(t => t.source === 'google').length;
+  const redditInPool = merged.filter(t => t.source === 'reddit').length;
+
+  // 4. Insert the merged snapshot
   const { data: inserted, error: insertErr } = await supabase
     .from('pulse_trends_master')
     .insert({
-      trends,
-      google_count: google.length,
-      reddit_count: reddit.length,
-      total_count: trends.length,
+      trends: merged,
+      google_count: googleInPool,
+      reddit_count: redditInPool,
+      total_count: merged.length,
     })
     .select('id, refreshed_at')
     .single();
@@ -102,8 +160,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Prune to the latest KEEP_SNAPSHOTS rows. Stale user_relevance_cache rows
-  // cascade-delete with them (FK behavior).
+  // 5. Prune old snapshot rows (keep latest N for race-safety)
   const { data: keepRows } = await supabase
     .from('pulse_trends_master')
     .select('id')
@@ -124,9 +181,12 @@ export async function GET(req: NextRequest) {
     success: true,
     snapshot_id: inserted.id,
     refreshed_at: inserted.refreshed_at,
-    google_count: google.length,
-    reddit_count: reddit.length,
-    total_count: trends.length,
-    pruned,
+    fresh_google: google.length,
+    fresh_reddit: reddit.length,
+    pool_total: merged.length,
+    pool_google: googleInPool,
+    pool_reddit: redditInPool,
+    carried_over: existingPool.length,
+    pruned_snapshots: pruned,
   });
 }

@@ -25,6 +25,7 @@ type PulseTrend = {
   subreddit?: string | null;       // Reddit only — e.g. "r/nba"
   permalink?: string | null;       // Reddit only — thread URL (for the unlock view later)
   sortVelocity?: number;           // unified 0–1 sort key, computed client-side
+  first_seen_at?: string;          // ISO timestamp — when this trend first entered the pool
 };
 
 type PulseFeedResponse = {
@@ -114,6 +115,37 @@ function fitStyle(fit: Fit): { dot: string; label: string; labelColor: string; b
     case 'high':   return { dot: 'var(--accent)',   label: 'High fit',   labelColor: 'var(--accent)',     bg: 'var(--accent-dim)' };
     case 'medium': return { dot: 'var(--text-muted)', label: 'Medium fit', labelColor: 'var(--text-muted)', bg: 'var(--surface-2)' };
     default:       return { dot: 'var(--text-dim)',  label: 'Low fit',    labelColor: 'var(--text-dim)',   bg: 'var(--surface-2)' };
+  }
+}
+
+// ─── Newness tiers ──────────────────────────────────────────────────────────
+type NewnessTier = 'breakout' | '<4h' | '<8h' | '<12h' | '<24h' | '<48h' | 'older';
+
+function newnessTier(firstSeenAt?: string): NewnessTier {
+  if (!firstSeenAt) return 'older';
+  const hoursAgo = (Date.now() - new Date(firstSeenAt).getTime()) / (1000 * 60 * 60);
+  if (hoursAgo < 1) return 'breakout';
+  if (hoursAgo < 4) return '<4h';
+  if (hoursAgo < 8) return '<8h';
+  if (hoursAgo < 12) return '<12h';
+  if (hoursAgo < 24) return '<24h';
+  if (hoursAgo < 48) return '<48h';
+  return 'older';
+}
+
+const NEWNESS_ORDER: Record<NewnessTier, number> = {
+  breakout: 0, '<4h': 1, '<8h': 2, '<12h': 3, '<24h': 4, '<48h': 5, older: 6,
+};
+
+function newnessStyle(tier: NewnessTier): { label: string; color: string; bg: string } {
+  switch (tier) {
+    case 'breakout': return { label: '🔥 Breakout', color: '#e85d04', bg: 'rgba(232,93,4,0.12)' };
+    case '<4h':      return { label: '< 4h',        color: 'var(--accent)', bg: 'var(--accent-dim)' };
+    case '<8h':      return { label: '< 8h',        color: 'var(--accent)', bg: 'var(--accent-dim)' };
+    case '<12h':     return { label: '< 12h',       color: 'var(--text-muted)', bg: 'var(--surface-2)' };
+    case '<24h':     return { label: '< 24h',       color: 'var(--text-muted)', bg: 'var(--surface-2)' };
+    case '<48h':     return { label: '< 48h',       color: 'var(--text-dim)', bg: 'var(--surface-2)' };
+    default:         return { label: '48h+',        color: 'var(--text-dim)', bg: 'var(--surface-2)' };
   }
 }
 
@@ -207,7 +239,7 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
         padding: '14px 18px',
         cursor: 'pointer',
         display: 'grid',
-        gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 95px 110px 18px',
+        gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 85px 85px 100px 18px',
         alignItems: 'center',
         gap: 14,
         textAlign: 'left',
@@ -254,6 +286,20 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
       ) : (
         <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', justifySelf: 'center' }}>—</span>
       )}
+      {(() => {
+        const tier = newnessTier(trend.first_seen_at);
+        const s = newnessStyle(tier);
+        return (
+          <span style={{
+            fontSize: 10.5, fontWeight: 700, letterSpacing: '0.02em',
+            color: s.color, background: s.bg,
+            padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap',
+            justifySelf: 'center',
+          }}>
+            {s.label}
+          </span>
+        );
+      })()}
       <span style={{
         fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap',
         fontVariantNumeric: 'tabular-nums',
@@ -993,14 +1039,25 @@ export default function PulsePage() {
   }, [trends]);
 
   // Apply sort to the (already filtered) trends
+  // "Relevant to me": primary = fit tier, secondary = newness (newest first)
+  // "Show all": primary = newness, then velocity order is preserved (stable sort)
   const displayTrends = useMemo(() => {
-    if (viewMode === 'all') return visibleTrends; // already in unified velocity order
-    const order: Record<Fit, number> = { high: 0, medium: 1, low: 2 };
-    // Array.sort is stable — equal-fit trends keep their velocity order
+    if (viewMode === 'all') {
+      return [...visibleTrends].sort((a, b) => {
+        const na = NEWNESS_ORDER[newnessTier(a.first_seen_at)];
+        const nb = NEWNESS_ORDER[newnessTier(b.first_seen_at)];
+        return na - nb; // newest first; equal tiers keep velocity order (stable sort)
+      });
+    }
+    const fitOrder: Record<Fit, number> = { high: 0, medium: 1, low: 2 };
     return [...visibleTrends].sort((a, b) => {
-      const fa = order[relevance[a.id]?.fit ?? 'medium'];
-      const fb = order[relevance[b.id]?.fit ?? 'medium'];
-      return fa - fb;
+      const fa = fitOrder[relevance[a.id]?.fit ?? 'medium'];
+      const fb = fitOrder[relevance[b.id]?.fit ?? 'medium'];
+      if (fa !== fb) return fa - fb;
+      // Within same fit tier, sort by newness (newest first)
+      const na = NEWNESS_ORDER[newnessTier(a.first_seen_at)];
+      const nb = NEWNESS_ORDER[newnessTier(b.first_seen_at)];
+      return na - nb;
     });
   }, [visibleTrends, viewMode, relevance]);
 
@@ -1199,7 +1256,7 @@ export default function PulsePage() {
                 {/* Column headers */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 95px 110px 18px',
+                  gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 85px 85px 100px 18px',
                   alignItems: 'center',
                   gap: 14,
                   padding: '10px 18px',
@@ -1216,6 +1273,7 @@ export default function PulsePage() {
                   <span>Trend</span>
                   <span>Category</span>
                   <span>Fit</span>
+                  <span>Newness</span>
                   <span>Activity</span>
                   <span />
                 </div>
