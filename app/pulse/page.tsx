@@ -213,13 +213,50 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
 }
 
 // ─── Pulse Trend Detail Modal (matches the dashboard AIE drawer pattern) ─────
-function PulseTrendDetail({ trend, relevance, onClose }: {
+function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx }: {
   trend: PulseTrend;
   relevance?: RelevanceScore;
   onClose: () => void;
+  bridge?: string;
+  onBridgeLoaded?: (trendId: string, bridge: string) => void;
+  creatorCtx?: { brief: string; platforms: string[]; format: string; styles: string[] };
 }) {
   const source = trendSource(trend);
   const category = trend.categories?.[0] || 'Trending';
+  const [bridgeLoading, setBridgeLoading] = useState(false);
+  const [localBridge, setLocalBridge] = useState(bridge || '');
+
+  // Fetch bridge on mount if not cached
+  useEffect(() => {
+    if (localBridge || !creatorCtx?.brief) return;
+    setBridgeLoading(true);
+    fetch('/api/pulse-bridge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trend_title: trend.query,
+        trend_categories: trend.categories || [],
+        trend_source: trendSource(trend),
+        brief: creatorCtx.brief,
+        platforms: creatorCtx.platforms,
+        content_format: creatorCtx.format,
+        content_styles: creatorCtx.styles,
+      }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.bridge) {
+          setLocalBridge(d.bridge);
+          onBridgeLoaded?.(trend.id, d.bridge);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setBridgeLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync if parent cache updates
+  useEffect(() => { if (bridge) setLocalBridge(bridge); }, [bridge]);
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -381,6 +418,64 @@ function PulseTrendDetail({ trend, relevance, onClose }: {
             </span>
           )}
         </div>
+
+        {/* Bridge — the content angle connecting this trend to the creator's audience */}
+        <div style={{
+          padding: '16px 18px',
+          background: 'linear-gradient(135deg, rgba(139,92,246,0.06), rgba(139,92,246,0.02))',
+          border: '1px solid rgba(139,92,246,0.15)',
+          borderRadius: 12,
+        }}>
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
+            color: 'var(--accent)', marginBottom: 8, fontFamily: 'var(--font-ui)',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            Your angle
+          </div>
+          {bridgeLoading ? (
+            <div className="pulse-shimmer" style={{
+              height: 20, borderRadius: 6,
+            }} />
+          ) : localBridge ? (
+            <p style={{
+              fontSize: 14, lineHeight: 1.55, color: 'var(--text)',
+              fontFamily: 'var(--font-ui)', margin: 0, fontWeight: 500,
+            }}>
+              {localBridge}
+            </p>
+          ) : (
+            <p style={{
+              fontSize: 13, color: 'var(--text-dim)', fontStyle: 'italic',
+              fontFamily: 'var(--font-ui)', margin: 0,
+            }}>
+              Set your audience brief to see your angle on this trend.
+            </p>
+          )}
+        </div>
+
+        {/* Unlock button — placeholder for Chunk F2 enrichment */}
+        <button
+          disabled
+          style={{
+            width: '100%', padding: '14px 20px',
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.06))',
+            border: '1px solid rgba(139,92,246,0.2)',
+            borderRadius: 12, cursor: 'not-allowed',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            fontFamily: 'var(--font-ui)', fontSize: 13.5, fontWeight: 700,
+            color: 'var(--accent)', letterSpacing: '0.01em',
+            opacity: 0.6,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+          </svg>
+          See what platforms are saying — coming soon
+        </button>
       </div>
     </div>
   );
@@ -538,6 +633,7 @@ export default function PulsePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTrend, setSelectedTrend] = useState<PulseTrend | null>(null);
   const handleClosePanel = useCallback(() => setSelectedTrend(null), []);
+  const [bridgeCache, setBridgeCache] = useState<Record<string, string>>({});
 
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
@@ -1030,6 +1126,9 @@ export default function PulsePage() {
               trend={selectedTrend}
               relevance={relevance[selectedTrend.id]}
               onClose={handleClosePanel}
+              bridge={bridgeCache[selectedTrend.id]}
+              onBridgeLoaded={(id, b) => setBridgeCache(prev => ({ ...prev, [id]: b }))}
+              creatorCtx={creatorCtxRef.current}
             />
           </div>
         </>
