@@ -379,7 +379,7 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
       </div>
 
       {/* Body */}
-      <div style={{ padding: '22px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ padding: '22px 24px', overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <h2 style={{
           fontFamily: 'var(--font-ui)', fontSize: 22, fontWeight: 800,
           lineHeight: 1.25, letterSpacing: '-0.02em', color: 'var(--text)',
