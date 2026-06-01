@@ -39,6 +39,8 @@ type PulseFeedResponse = {
   scores: Array<{ id: string; fit: string }> | null;
   scored_at?: string | null;
   cache_state?: 'hit' | 'partial' | 'miss_no_cache' | 'empty_master_pool';
+  unlocked_ids?: string[];
+  saved_ids?: string[];
   error?: string;
 };
 
@@ -101,6 +103,7 @@ type EnrichmentItem = {
   shares?: number;
   followers?: number;
   is_short?: boolean;
+  posted_at?: string | null;  // ISO 8601 UTC; null if platform didn't return it
 };
 
 type EnrichmentPlatform = {
@@ -147,6 +150,26 @@ function newnessStyle(tier: NewnessTier): { label: string; color: string; bg: st
     case '<48h':     return { label: '< 48h',       color: 'var(--text-dim)', bg: 'var(--surface-2)' };
     default:         return { label: '48h+',        color: 'var(--text-dim)', bg: 'var(--surface-2)' };
   }
+}
+
+// ─── Post recency badge (for enrichment items) ──────────────────────────────
+// Distinct from `newnessTier` which measures how long a trend has been in our
+// pool. This measures how long ago a specific TikTok/YouTube/IG/LinkedIn post
+// was published — the "what people are saying RIGHT NOW" signal.
+function postRecency(postedAt?: string | null): { label: string; color: string; bg: string } | null {
+  if (!postedAt) return null;
+  const ms = Date.now() - new Date(postedAt).getTime();
+  if (isNaN(ms) || ms < 0) return null;
+  const hours = ms / (1000 * 60 * 60);
+  const days = hours / 24;
+
+  if (hours < 1)  return { label: 'just now',   color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+  if (hours < 24) return { label: `${Math.floor(hours)}h ago`, color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+  if (days < 2)   return { label: 'yesterday',  color: '#0891b2', bg: 'rgba(8,145,178,0.10)' };
+  if (days < 7)   return { label: `${Math.floor(days)}d ago`,  color: '#0891b2', bg: 'rgba(8,145,178,0.10)' };
+  if (days < 30)  return { label: `${Math.floor(days / 7)}w ago`, color: 'var(--text-muted)', bg: 'var(--surface-2)' };
+  if (days < 365) return { label: `${Math.floor(days / 30)}mo ago`, color: 'var(--text-dim)', bg: 'var(--surface-2)' };
+  return { label: `${Math.floor(days / 365)}y ago`, color: 'var(--text-dim)', bg: 'var(--surface-2)' };
 }
 
 // ─── Source identification ───────────────────────────────────────────────────
@@ -209,13 +232,14 @@ function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number
 }
 
 // ─── Pulse Row (Chunk B — table layout, click to open detail modal) ──────────
-function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: {
+function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast, unlocked }: {
   trend: PulseTrend;
   rank: number;
   relevance?: RelevanceScore;
   relevanceLoading: boolean;
   onOpen: () => void;
   isLast?: boolean;
+  unlocked?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const source = trendSource(trend);
@@ -284,7 +308,18 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
       ) : relevanceLoading ? (
         <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block', justifySelf: 'center' }} />
       ) : (
-        <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', justifySelf: 'center' }}>—</span>
+        <span
+          title="Score couldn't be computed for this trend. It'll retry on next refresh."
+          style={{
+            fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em',
+            color: 'var(--text-dim)', background: 'var(--surface-2)',
+            border: '1px dashed var(--border)',
+            padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
+            justifySelf: 'center',
+          }}
+        >
+          Unscored
+        </span>
       )}
       {(() => {
         const tier = newnessTier(trend.first_seen_at);
@@ -306,21 +341,37 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
       }}>
         {compactMetric}
       </span>
-      <svg
-        width="14" height="14" viewBox="0 0 24 24" fill="none"
-        stroke={hover ? 'var(--accent)' : 'var(--text-dim)'}
-        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-        style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'translateX(2px)' : 'none' }}
-        aria-label="Open detail"
-      >
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
+      {unlocked ? (
+        // Open padlock — green, matching AIE's #16a34a
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="#16a34a"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
+          aria-label="Unlocked"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        </svg>
+      ) : (
+        // Closed padlock — red
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="#dc2626"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
+          aria-label="Locked — click to unlock"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      )}
     </button>
   );
 }
 
 // ─── Pulse Trend Detail Modal (matches the dashboard AIE drawer pattern) ─────
-function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx, enrichment, onEnrichmentLoaded }: {
+function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx, enrichment, onEnrichmentLoaded, initialSaved, onSavedChange }: {
   trend: PulseTrend;
   relevance?: RelevanceScore;
   onClose: () => void;
@@ -329,6 +380,8 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   creatorCtx?: { brief: string; platforms: string[]; format: string; styles: string[] };
   enrichment?: EnrichmentData;
   onEnrichmentLoaded?: (trendId: string, data: EnrichmentData) => void;
+  initialSaved?: boolean;
+  onSavedChange?: (trendId: string, saved: boolean) => void;
 }) {
   const source = trendSource(trend);
   const category = trend.categories?.[0] || 'Trending';
@@ -338,6 +391,26 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [localEnrichment, setLocalEnrichment] = useState<EnrichmentData | null>(enrichment || null);
   const [collapsedPlatforms, setCollapsedPlatforms] = useState<Set<string>>(new Set());
+  const [savedToList, setSavedToList] = useState(!!initialSaved);
+  const [savingToList, setSavingToList] = useState(false);
+
+  const toggleSaved = () => {
+    if (savingToList) return;
+    const next = !savedToList;
+    setSavedToList(next); // optimistic
+    onSavedChange?.(trend.id, next); // keep parent set in sync
+    setSavingToList(true);
+    fetch('/api/pulse-unlocks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trend_id: trend.id, saved_to_list: next }),
+    })
+      .catch(() => {
+        setSavedToList(!next); // rollback on failure
+        onSavedChange?.(trend.id, !next);
+      })
+      .finally(() => setSavingToList(false));
+  };
 
   const handleUnlock = () => {
     if (enrichLoading || localEnrichment) return;
@@ -350,6 +423,19 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
         if (d.success && d.platforms) {
           setLocalEnrichment(d.platforms);
           onEnrichmentLoaded?.(trend.id, d.platforms);
+          // Persist the unlock so it survives page reload and is available
+          // across devices. Fire-and-forget — UX shouldn't block on the write.
+          fetch('/api/pulse-unlocks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trend_id: trend.id,
+              bridge: localBridge || null,
+              youtube_query: youtubeQuery || null,
+              enrichment: d.platforms,
+              trend_snapshot: trend,
+            }),
+          }).catch(() => { /* swallow — DB write is best-effort */ });
         }
       })
       .catch(() => {})
@@ -359,35 +445,70 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   // Sync if parent cache updates
   useEffect(() => { if (enrichment) setLocalEnrichment(enrichment); }, [enrichment]);
 
-  // Fetch bridge on mount if not cached
+  // On mount: check Supabase for a persisted unlock first. If found, populate
+  // bridge + enrichment from there (zero Sonnet/ScrapeCreators calls). If not,
+  // fall back to fresh bridge generation. Skip the whole thing if the parent
+  // already passed a cached bridge (in-session hit).
   useEffect(() => {
-    if (localBridge || !creatorCtx?.brief) return;
+    if (localBridge && localEnrichment) return; // fully hydrated already
+    if (!creatorCtx?.brief) return;
+
+    let cancelled = false;
     setBridgeLoading(true);
-    fetch('/api/pulse-bridge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        trend_title: trend.query,
-        trend_categories: trend.categories || [],
-        trend_source: trendSource(trend),
-        brief: creatorCtx.brief,
-        platforms: creatorCtx.platforms,
-        content_format: creatorCtx.format,
-        content_styles: creatorCtx.styles,
-      }),
-    })
+
+    // First check: persisted unlock in Supabase
+    fetch(`/api/pulse-unlocks?trend_id=${encodeURIComponent(trend.id)}`)
       .then(r => r.json())
-      .then(d => {
-        if (d.success && d.bridge) {
-          setLocalBridge(d.bridge);
-          onBridgeLoaded?.(trend.id, d.bridge);
+      .then(data => {
+        if (cancelled) return;
+        if (data.success && data.unlock) {
+          // Hit — populate from DB, skip Sonnet entirely
+          const u = data.unlock;
+          if (u.bridge) {
+            setLocalBridge(u.bridge);
+            onBridgeLoaded?.(trend.id, u.bridge);
+          }
+          if (u.youtube_query) setYoutubeQuery(u.youtube_query);
+          if (u.enrichment) {
+            setLocalEnrichment(u.enrichment);
+            onEnrichmentLoaded?.(trend.id, u.enrichment);
+          }
+          if (typeof u.saved_to_list === 'boolean') {
+            setSavedToList(u.saved_to_list);
+          }
+          setBridgeLoading(false);
+          return;
         }
-        if (d.success && d.youtube_query) {
-          setYoutubeQuery(d.youtube_query);
-        }
+        // Miss — fall back to fresh bridge generation
+        return fetch('/api/pulse-bridge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trend_title: trend.query,
+            trend_categories: trend.categories || [],
+            trend_source: trendSource(trend),
+            brief: creatorCtx.brief,
+            platforms: creatorCtx.platforms,
+            content_format: creatorCtx.format,
+            content_styles: creatorCtx.styles,
+          }),
+        })
+          .then(r => r.json())
+          .then(d => {
+            if (cancelled) return;
+            if (d.success && d.bridge) {
+              setLocalBridge(d.bridge);
+              onBridgeLoaded?.(trend.id, d.bridge);
+            }
+            if (d.success && d.youtube_query) {
+              setYoutubeQuery(d.youtube_query);
+            }
+          })
+          .finally(() => { if (!cancelled) setBridgeLoading(false); });
       })
-      .catch(() => {})
-      .finally(() => setBridgeLoading(false));
+      .catch(() => { if (!cancelled) setBridgeLoading(false); });
+
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -571,6 +692,44 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
               <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
             Your angle
+            {/* Save to My List — only after unlock (we want the user to have seen the full content first) */}
+            {localEnrichment && (
+              <button
+                onClick={toggleSaved}
+                disabled={savingToList}
+                title={savedToList ? 'Remove from My List' : 'Save to My List'}
+                style={{
+                  marginLeft: 'auto',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
+                  textTransform: 'none',
+                  color: savedToList ? '#16a34a' : 'var(--accent)',
+                  background: savedToList ? 'rgba(22,163,74,0.08)' : 'transparent',
+                  border: `1px solid ${savedToList ? '#16a34a' : 'var(--accent)'}`,
+                  borderRadius: 7, padding: '5px 11px',
+                  cursor: savingToList ? 'wait' : 'pointer',
+                  opacity: savingToList ? 0.6 : 1,
+                  fontFamily: 'var(--font-ui)',
+                  transition: 'background 0.12s',
+                }}
+              >
+                {savedToList ? (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Save to My List
+                  </>
+                )}
+              </button>
+            )}
           </div>
           {bridgeLoading ? (
             <div className="pulse-shimmer" style={{
@@ -631,7 +790,12 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
               const platform = localEnrichment[platformKey];
               if (!platform || platform.items.length === 0) return null;
               return (
-                <div key={platformKey}>
+                <div key={platformKey} style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  background: 'var(--surface-1)',
+                  overflow: 'hidden',
+                }}>
                   <button
                     onClick={() => setCollapsedPlatforms(prev => {
                       const next = new Set(prev);
@@ -639,29 +803,42 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                       return next;
                     })}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, marginBottom: collapsedPlatforms.has(platformKey) ? 0 : 10,
-                      fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
-                      color: 'var(--text-dim)', fontFamily: 'var(--font-ui)',
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      padding: '4px 0', width: '100%', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      color: 'var(--text)', fontFamily: 'var(--font-ui)',
+                      background: 'var(--surface-2)', border: 'none',
+                      borderBottom: collapsedPlatforms.has(platformKey) ? 'none' : '1px solid var(--border)',
+                      cursor: 'pointer',
+                      padding: '12px 16px', width: '100%', textAlign: 'left',
+                      transition: 'background 0.15s ease',
                     }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-3, var(--surface-2))')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                   >
-                    <PlatformIcon platform={platformKey} size={15} />
+                    <PlatformIcon platform={platformKey} size={18} />
                     {platform.name}
-                    <span style={{ fontWeight: 500, fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', textTransform: 'none' }}>
+                    <span style={{
+                      fontWeight: 600, fontSize: 10,
+                      color: 'var(--text-muted)', background: 'var(--surface-1)',
+                      border: '1px solid var(--border)',
+                      padding: '2px 8px', borderRadius: 100, letterSpacing: '0.02em',
+                      textTransform: 'none',
+                    }}>
                       {platform.items.length} result{platform.items.length !== 1 ? 's' : ''}
                     </span>
                     <svg
-                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                       strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                      style={{ marginLeft: 'auto', transition: 'transform 0.15s ease', transform: collapsedPlatforms.has(platformKey) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                      style={{ marginLeft: 'auto', transition: 'transform 0.15s ease', transform: collapsedPlatforms.has(platformKey) ? 'rotate(-90deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}
                     >
                       <path d="M6 9l6 6 6-6"/>
                     </svg>
                   </button>
                   {!collapsedPlatforms.has(platformKey) && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {platform.items.map((item, idx) => (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10 }}>
+                    {platform.items.map((item, idx) => {
+                      const recency = postRecency(item.posted_at);
+                      return (
                       <a
                         key={idx}
                         href={item.url}
@@ -686,20 +863,65 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                           {item.title}
                         </span>
                         <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
+                          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
                           fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)',
                         }}>
                           <span style={{ fontWeight: 600 }}>{item.author}</span>
-                          {(item.likes != null && item.likes > 0) && <span>{formatVolume(item.likes)} likes</span>}
-                          {(item.views != null && item.views > 0) && <span>{formatVolume(item.views)} views</span>}
-                          {(item.plays != null && item.plays > 0) && <span>{formatVolume(item.plays)} plays</span>}
-                          {(item.comments != null && item.comments > 0) && <span>{formatVolume(item.comments)} comments</span>}
+                          {recency && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700,
+                              color: recency.color, background: recency.bg,
+                              padding: '2px 7px', borderRadius: 100,
+                              letterSpacing: '0.02em',
+                            }}>{recency.label}</span>
+                          )}
+                          {(item.views != null && item.views > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.views)} views</span>
+                          )}
+                          {(item.plays != null && item.plays > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.plays)} plays</span>
+                          )}
+                          {(item.likes != null && item.likes > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.likes)} likes</span>
+                          )}
+                          {(item.comments != null && item.comments > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.comments)} comments</span>
+                          )}
+                          {(item.shares != null && item.shares > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.shares)} shares</span>
+                          )}
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
                             <path d="M7 17L17 7M7 7h10v10"/>
                           </svg>
                         </div>
                       </a>
-                    ))}
+                      );
+                    })}
                   </div>
                   )}
                 </div>
@@ -856,6 +1078,8 @@ export default function PulsePage() {
   const [relevance, setRelevance] = useState<Record<string, RelevanceScore>>({});
   const [relevanceLoading, setRelevanceLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'relevant' | 'all'>('relevant');
+  const [sortBy, setSortBy] = useState<'default' | 'fit' | 'newness' | 'activity'>('default');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [brief, setBrief] = useState<string>('');
 
@@ -874,6 +1098,8 @@ export default function PulsePage() {
   }, [selectedTrend]);
   const [bridgeCache, setBridgeCache] = useState<Record<string, string>>({});
   const [enrichmentCache, setEnrichmentCache] = useState<Record<string, EnrichmentData>>({});
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
@@ -980,6 +1206,10 @@ export default function PulsePage() {
         // No cached scores at all — clear so the shimmer shows on existing rows.
         setRelevance({});
       }
+
+      // Populate unlocked + saved state for icons / save button
+      setUnlockedIds(new Set(data.unlocked_ids || []));
+      setSavedIds(new Set(data.saved_ids || []));
     } catch {
       setError('Could not load trends right now.');
     } finally {
@@ -1055,31 +1285,62 @@ export default function PulsePage() {
     return m;
   }, [trends]);
 
-  // Apply sort to the (already filtered) trends
-  // "Relevant to me": primary = fit tier, secondary = newness (newest first)
-  // "Show all": primary = newness, then velocity order is preserved (stable sort)
+  // Apply sort to the (already filtered) trends.
+  // - sortBy='default' uses the smart default (fit→newness in relevant mode,
+  //   newness in show-all mode).
+  // - Otherwise the user picked a column; we sort by that with sortDir.
   const displayTrends = useMemo(() => {
-    if (viewMode === 'all') {
-      return [...visibleTrends].sort((a, b) => {
-        const na = NEWNESS_ORDER[newnessTier(a.first_seen_at)];
-        const nb = NEWNESS_ORDER[newnessTier(b.first_seen_at)];
-        return na - nb; // newest first; equal tiers keep velocity order (stable sort)
-      });
-    }
+    const arr = [...visibleTrends];
     const fitOrder: Record<Fit, number> = { high: 0, medium: 1, low: 2 };
-    return [...visibleTrends].sort((a, b) => {
-      const fa = fitOrder[relevance[a.id]?.fit ?? 'medium'];
-      const fb = fitOrder[relevance[b.id]?.fit ?? 'medium'];
-      if (fa !== fb) return fa - fb;
-      // Within same fit tier, sort by newness (newest first)
-      const na = NEWNESS_ORDER[newnessTier(a.first_seen_at)];
-      const nb = NEWNESS_ORDER[newnessTier(b.first_seen_at)];
-      return na - nb;
-    });
-  }, [visibleTrends, viewMode, relevance]);
+
+    // Helpers — these all return "smaller = higher rank" by default
+    const fitRank = (t: PulseTrend) => fitOrder[relevance[t.id]?.fit ?? 'medium'];
+    const newnessRank = (t: PulseTrend) => NEWNESS_ORDER[newnessTier(t.first_seen_at)];
+    const activityRank = (t: PulseTrend) => {
+      // For Reddit: upvotes. For Google: search volume. Both higher = more active.
+      // Return as negative so "smaller = higher rank" matches the other helpers.
+      const val = (t.reddit_upvotes ?? t.search_volume ?? 0);
+      return -val;
+    };
+
+    if (sortBy === 'default') {
+      if (viewMode === 'all') {
+        arr.sort((a, b) => newnessRank(a) - newnessRank(b));
+      } else {
+        arr.sort((a, b) => {
+          const fa = fitRank(a); const fb = fitRank(b);
+          if (fa !== fb) return fa - fb;
+          return newnessRank(a) - newnessRank(b);
+        });
+      }
+      return arr;
+    }
+
+    const dir = sortDir === 'desc' ? 1 : -1; // 'desc' = best first (smaller rank → top)
+    if (sortBy === 'fit') {
+      arr.sort((a, b) => dir * (fitRank(a) - fitRank(b)) || (newnessRank(a) - newnessRank(b)));
+    } else if (sortBy === 'newness') {
+      arr.sort((a, b) => dir * (newnessRank(a) - newnessRank(b)) || (fitRank(a) - fitRank(b)));
+    } else if (sortBy === 'activity') {
+      arr.sort((a, b) => dir * (activityRank(a) - activityRank(b)));
+    }
+    return arr;
+  }, [visibleTrends, viewMode, relevance, sortBy, sortDir]);
 
   // Reset to page 1 when user-initiated filters/sort change (not on data updates)
-  useEffect(() => { setCurrentPage(1); }, [hiddenCats, viewMode]);
+  useEffect(() => { setCurrentPage(1); }, [hiddenCats, viewMode, sortBy, sortDir]);
+
+  // Header click handler — toggle direction if same column, else switch column
+  const handleSort = useCallback((col: 'fit' | 'newness' | 'activity') => {
+    setSortBy(prev => {
+      if (prev === col) {
+        setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+        return prev;
+      }
+      setSortDir('desc'); // default direction when switching columns
+      return col;
+    });
+  }, []);
 
   // Pagination — clamp page if list shrinks
   const totalPages = Math.max(1, Math.ceil(displayTrends.length / PAGE_SIZE));
@@ -1270,7 +1531,7 @@ export default function PulsePage() {
                 WebkitBackdropFilter: 'blur(14px)',
                 overflow: 'hidden',
               }}>
-                {/* Column headers */}
+                {/* Column headers — Fit, Newness, Activity are sortable */}
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 85px 85px 100px 18px',
@@ -1289,9 +1550,37 @@ export default function PulsePage() {
                   <span>Source</span>
                   <span>Trend</span>
                   <span>Category</span>
-                  <span>Fit</span>
-                  <span>Newness</span>
-                  <span>Activity</span>
+                  {(['fit', 'newness', 'activity'] as const).map(col => {
+                    const active = sortBy === col;
+                    const label = col === 'fit' ? 'Fit' : col === 'newness' ? 'Newness' : 'Activity';
+                    return (
+                      <button
+                        key={col}
+                        onClick={() => handleSort(col)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit',
+                          color: active ? 'var(--accent)' : 'var(--text-dim)',
+                          padding: 0,
+                        }}
+                        title={`Sort by ${label}`}
+                      >
+                        {label}
+                        {active ? (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            {sortDir === 'desc' ? <polyline points="6 9 12 15 18 9"/> : <polyline points="6 15 12 9 18 15"/>}
+                          </svg>
+                        ) : (
+                          // Subtle two-arrow indicator that this is sortable
+                          <svg width="8" height="10" viewBox="0 0 8 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                            <polyline points="2 4 4 2 6 4"/>
+                            <polyline points="2 6 4 8 6 6"/>
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
                   <span />
                 </div>
 
@@ -1304,6 +1593,7 @@ export default function PulsePage() {
                     relevanceLoading={relevanceLoading}
                     onOpen={() => setSelectedTrend(trend)}
                     isLast={i === pageTrends.length - 1}
+                    unlocked={unlockedIds.has(trend.id)}
                   />
                 ))}
               </div>
@@ -1393,7 +1683,25 @@ export default function PulsePage() {
               onBridgeLoaded={(id, b) => setBridgeCache(prev => ({ ...prev, [id]: b }))}
               creatorCtx={creatorCtxRef.current}
               enrichment={enrichmentCache[selectedTrend.id]}
-              onEnrichmentLoaded={(id, data) => setEnrichmentCache(prev => ({ ...prev, [id]: data }))}
+              onEnrichmentLoaded={(id, data) => {
+                setEnrichmentCache(prev => ({ ...prev, [id]: data }));
+                // Optimistically mark as unlocked so the row icon flips
+                // without waiting for the next feed fetch.
+                setUnlockedIds(prev => {
+                  if (prev.has(id)) return prev;
+                  const next = new Set(prev);
+                  next.add(id);
+                  return next;
+                });
+              }}
+              initialSaved={savedIds.has(selectedTrend.id)}
+              onSavedChange={(id, saved) => {
+                setSavedIds(prev => {
+                  const next = new Set(prev);
+                  if (saved) next.add(id); else next.delete(id);
+                  return next;
+                });
+              }}
             />
           </div>
         </>
