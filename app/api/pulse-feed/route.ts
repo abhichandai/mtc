@@ -93,12 +93,13 @@ export async function GET() {
   // 5. Look up which of these trends the user has unlocked (for lock/unlock icon)
   const { data: unlockRows } = await supabase
     .from('pulse_unlocks')
-    .select('trend_id')
+    .select('trend_id, saved_to_list')
     .eq('user_id', userId)
     .eq('brief_hash', currentBriefHash)
     .in('trend_id', trendIds);
 
   const unlockedIds = (unlockRows || []).map(r => r.trend_id);
+  const savedIds = (unlockRows || []).filter(r => r.saved_to_list).map(r => r.trend_id);
 
   // 6. cache_state coverage
   const total = trendIds.length;
@@ -132,5 +133,6 @@ export async function GET() {
     total_count_in_pool: total,
     cache_state: cacheState,
     unlocked_ids: unlockedIds,
+    saved_ids: savedIds,
   });
 }

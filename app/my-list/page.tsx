@@ -22,11 +22,23 @@ interface PulseUnlock {
   trend_id: string;
   bridge: string | null;
   youtube_query: string | null;
-  enrichment: Record<string, { name: string; items: Array<{ title: string; url: string; author?: string; posted_at?: string | null }> }> | null;
+  enrichment: Record<string, { name: string; items: EnrichItem[] }> | null;
   trend_snapshot: { query?: string; source?: string; categories?: string[]; permalink?: string | null; subreddit?: string | null } | null;
   unlocked_at: string;
   saved_to_list: boolean;
   brief_hash: string;
+}
+
+interface EnrichItem {
+  title: string;
+  url: string;
+  author?: string;
+  posted_at?: string | null;
+  views?: number;
+  plays?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -37,6 +49,43 @@ function timeAgo(ts: string): string {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
+}
+
+// Compact number formatting (matches the Pulse modal): 1500 → 1.5K, 2_000_000 → 2M
+function formatVolume(n?: number | null): string {
+  if (!n || n <= 0) return '';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(n);
+}
+
+// Post recency badge — mirrors the Pulse modal's postRecency()
+function postRecency(postedAt?: string | null): { label: string; color: string; bg: string } | null {
+  if (!postedAt) return null;
+  const ms = Date.now() - new Date(postedAt).getTime();
+  if (isNaN(ms) || ms < 0) return null;
+  const hours = ms / 3_600_000;
+  const days = hours / 24;
+  if (hours < 1)  return { label: 'just now', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+  if (hours < 24) return { label: `${Math.floor(hours)}h ago`, color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+  if (days < 2)   return { label: 'yesterday', color: '#0891b2', bg: 'rgba(8,145,178,0.10)' };
+  if (days < 7)   return { label: `${Math.floor(days)}d ago`, color: '#0891b2', bg: 'rgba(8,145,178,0.10)' };
+  if (days < 30)  return { label: `${Math.floor(days / 7)}w ago`, color: 'var(--text-muted)', bg: 'var(--surface-2)' };
+  if (days < 365) return { label: `${Math.floor(days / 30)}mo ago`, color: 'var(--text-dim)', bg: 'var(--surface-2)' };
+  return { label: `${Math.floor(days / 365)}y ago`, color: 'var(--text-dim)', bg: 'var(--surface-2)' };
+}
+
+// Small bordered pill used for engagement metrics in saved-trend enrichment
+function metricPill(value: number | undefined, label: string) {
+  if (value == null || value <= 0) return null;
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600,
+      color: 'var(--text-muted)', background: 'var(--surface-1)',
+      border: '1px solid var(--border)',
+      padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+    }}>{formatVolume(value)} {label}</span>
+  );
 }
 
 const typeConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -538,23 +587,45 @@ function SavedTrendCard({ unlock, expanded, onToggleExpand, copied, onCopy, remo
                   {plat.name || platKey} · {plat.items.length}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {plat.items.map((item, i) => (
-                    <a
-                      key={i}
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontSize: 12, color: 'var(--text)',
-                        lineHeight: 1.4, padding: '6px 10px',
-                        background: 'var(--surface-2)', borderRadius: 6,
-                        textDecoration: 'none', display: 'block',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {item.title}
-                    </a>
-                  ))}
+                  {plat.items.map((item, i) => {
+                    const recency = postRecency(item.posted_at);
+                    return (
+                      <a
+                        key={i}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex', flexDirection: 'column', gap: 4,
+                          padding: '8px 11px',
+                          background: 'var(--surface-2)', borderRadius: 8,
+                          textDecoration: 'none', color: 'var(--text)',
+                        }}
+                      >
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, lineHeight: 1.4,
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        }}>
+                          {item.title}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 10, color: 'var(--text-muted)' }}>
+                          {item.author && <span style={{ fontWeight: 600 }}>{item.author}</span>}
+                          {recency && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700,
+                              color: recency.color, background: recency.bg,
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{recency.label}</span>
+                          )}
+                          {metricPill(item.views, 'views')}
+                          {metricPill(item.plays, 'plays')}
+                          {metricPill(item.likes, 'likes')}
+                          {metricPill(item.comments, 'comments')}
+                          {metricPill(item.shares, 'shares')}
+                        </div>
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             );

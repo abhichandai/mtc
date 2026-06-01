@@ -40,6 +40,7 @@ type PulseFeedResponse = {
   scored_at?: string | null;
   cache_state?: 'hit' | 'partial' | 'miss_no_cache' | 'empty_master_pool';
   unlocked_ids?: string[];
+  saved_ids?: string[];
   error?: string;
 };
 
@@ -370,7 +371,7 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast, un
 }
 
 // ─── Pulse Trend Detail Modal (matches the dashboard AIE drawer pattern) ─────
-function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx, enrichment, onEnrichmentLoaded }: {
+function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, creatorCtx, enrichment, onEnrichmentLoaded, initialSaved, onSavedChange }: {
   trend: PulseTrend;
   relevance?: RelevanceScore;
   onClose: () => void;
@@ -379,6 +380,8 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   creatorCtx?: { brief: string; platforms: string[]; format: string; styles: string[] };
   enrichment?: EnrichmentData;
   onEnrichmentLoaded?: (trendId: string, data: EnrichmentData) => void;
+  initialSaved?: boolean;
+  onSavedChange?: (trendId: string, saved: boolean) => void;
 }) {
   const source = trendSource(trend);
   const category = trend.categories?.[0] || 'Trending';
@@ -388,20 +391,24 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [localEnrichment, setLocalEnrichment] = useState<EnrichmentData | null>(enrichment || null);
   const [collapsedPlatforms, setCollapsedPlatforms] = useState<Set<string>>(new Set());
-  const [savedToList, setSavedToList] = useState(false);
+  const [savedToList, setSavedToList] = useState(!!initialSaved);
   const [savingToList, setSavingToList] = useState(false);
 
   const toggleSaved = () => {
     if (savingToList) return;
     const next = !savedToList;
     setSavedToList(next); // optimistic
+    onSavedChange?.(trend.id, next); // keep parent set in sync
     setSavingToList(true);
     fetch('/api/pulse-unlocks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trend_id: trend.id, saved_to_list: next }),
     })
-      .catch(() => setSavedToList(!next)) // rollback on failure
+      .catch(() => {
+        setSavedToList(!next); // rollback on failure
+        onSavedChange?.(trend.id, !next);
+      })
       .finally(() => setSavingToList(false));
   };
 
@@ -1092,6 +1099,7 @@ export default function PulsePage() {
   const [bridgeCache, setBridgeCache] = useState<Record<string, string>>({});
   const [enrichmentCache, setEnrichmentCache] = useState<Record<string, EnrichmentData>>({});
   const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
@@ -1199,8 +1207,9 @@ export default function PulsePage() {
         setRelevance({});
       }
 
-      // Populate unlocked state for lock/unlock icons
+      // Populate unlocked + saved state for icons / save button
       setUnlockedIds(new Set(data.unlocked_ids || []));
+      setSavedIds(new Set(data.saved_ids || []));
     } catch {
       setError('Could not load trends right now.');
     } finally {
@@ -1682,6 +1691,14 @@ export default function PulsePage() {
                   if (prev.has(id)) return prev;
                   const next = new Set(prev);
                   next.add(id);
+                  return next;
+                });
+              }}
+              initialSaved={savedIds.has(selectedTrend.id)}
+              onSavedChange={(id, saved) => {
+                setSavedIds(prev => {
+                  const next = new Set(prev);
+                  if (saved) next.add(id); else next.delete(id);
                   return next;
                 });
               }}
