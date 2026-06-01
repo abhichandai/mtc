@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Auth — needed to write the user_relevance_cache row in the new flow.
+    // Auth — needed to write the user_trend_relevance cache row in the new flow.
     // Best-effort: if auth fails we can still score, we just skip the cache write.
     const { userId } = await auth().catch(() => ({ userId: null as string | null }));
 
