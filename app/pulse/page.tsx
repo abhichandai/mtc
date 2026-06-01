@@ -1014,6 +1014,8 @@ export default function PulsePage() {
   const [relevance, setRelevance] = useState<Record<string, RelevanceScore>>({});
   const [relevanceLoading, setRelevanceLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'relevant' | 'all'>('relevant');
+  const [sortBy, setSortBy] = useState<'default' | 'fit' | 'newness' | 'activity'>('default');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [brief, setBrief] = useState<string>('');
 
@@ -1217,31 +1219,62 @@ export default function PulsePage() {
     return m;
   }, [trends]);
 
-  // Apply sort to the (already filtered) trends
-  // "Relevant to me": primary = fit tier, secondary = newness (newest first)
-  // "Show all": primary = newness, then velocity order is preserved (stable sort)
+  // Apply sort to the (already filtered) trends.
+  // - sortBy='default' uses the smart default (fit→newness in relevant mode,
+  //   newness in show-all mode).
+  // - Otherwise the user picked a column; we sort by that with sortDir.
   const displayTrends = useMemo(() => {
-    if (viewMode === 'all') {
-      return [...visibleTrends].sort((a, b) => {
-        const na = NEWNESS_ORDER[newnessTier(a.first_seen_at)];
-        const nb = NEWNESS_ORDER[newnessTier(b.first_seen_at)];
-        return na - nb; // newest first; equal tiers keep velocity order (stable sort)
-      });
-    }
+    const arr = [...visibleTrends];
     const fitOrder: Record<Fit, number> = { high: 0, medium: 1, low: 2 };
-    return [...visibleTrends].sort((a, b) => {
-      const fa = fitOrder[relevance[a.id]?.fit ?? 'medium'];
-      const fb = fitOrder[relevance[b.id]?.fit ?? 'medium'];
-      if (fa !== fb) return fa - fb;
-      // Within same fit tier, sort by newness (newest first)
-      const na = NEWNESS_ORDER[newnessTier(a.first_seen_at)];
-      const nb = NEWNESS_ORDER[newnessTier(b.first_seen_at)];
-      return na - nb;
-    });
-  }, [visibleTrends, viewMode, relevance]);
+
+    // Helpers — these all return "smaller = higher rank" by default
+    const fitRank = (t: PulseTrend) => fitOrder[relevance[t.id]?.fit ?? 'medium'];
+    const newnessRank = (t: PulseTrend) => NEWNESS_ORDER[newnessTier(t.first_seen_at)];
+    const activityRank = (t: PulseTrend) => {
+      // For Reddit: upvotes. For Google: search volume. Both higher = more active.
+      // Return as negative so "smaller = higher rank" matches the other helpers.
+      const val = (t.reddit_upvotes ?? t.search_volume ?? 0);
+      return -val;
+    };
+
+    if (sortBy === 'default') {
+      if (viewMode === 'all') {
+        arr.sort((a, b) => newnessRank(a) - newnessRank(b));
+      } else {
+        arr.sort((a, b) => {
+          const fa = fitRank(a); const fb = fitRank(b);
+          if (fa !== fb) return fa - fb;
+          return newnessRank(a) - newnessRank(b);
+        });
+      }
+      return arr;
+    }
+
+    const dir = sortDir === 'desc' ? 1 : -1; // 'desc' = best first (smaller rank → top)
+    if (sortBy === 'fit') {
+      arr.sort((a, b) => dir * (fitRank(a) - fitRank(b)) || (newnessRank(a) - newnessRank(b)));
+    } else if (sortBy === 'newness') {
+      arr.sort((a, b) => dir * (newnessRank(a) - newnessRank(b)) || (fitRank(a) - fitRank(b)));
+    } else if (sortBy === 'activity') {
+      arr.sort((a, b) => dir * (activityRank(a) - activityRank(b)));
+    }
+    return arr;
+  }, [visibleTrends, viewMode, relevance, sortBy, sortDir]);
 
   // Reset to page 1 when user-initiated filters/sort change (not on data updates)
-  useEffect(() => { setCurrentPage(1); }, [hiddenCats, viewMode]);
+  useEffect(() => { setCurrentPage(1); }, [hiddenCats, viewMode, sortBy, sortDir]);
+
+  // Header click handler — toggle direction if same column, else switch column
+  const handleSort = useCallback((col: 'fit' | 'newness' | 'activity') => {
+    setSortBy(prev => {
+      if (prev === col) {
+        setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+        return prev;
+      }
+      setSortDir('desc'); // default direction when switching columns
+      return col;
+    });
+  }, []);
 
   // Pagination — clamp page if list shrinks
   const totalPages = Math.max(1, Math.ceil(displayTrends.length / PAGE_SIZE));
@@ -1432,7 +1465,7 @@ export default function PulsePage() {
                 WebkitBackdropFilter: 'blur(14px)',
                 overflow: 'hidden',
               }}>
-                {/* Column headers */}
+                {/* Column headers — Fit, Newness, Activity are sortable */}
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: '40px 70px minmax(0, 1fr) 130px 85px 85px 100px 18px',
@@ -1451,9 +1484,37 @@ export default function PulsePage() {
                   <span>Source</span>
                   <span>Trend</span>
                   <span>Category</span>
-                  <span>Fit</span>
-                  <span>Newness</span>
-                  <span>Activity</span>
+                  {(['fit', 'newness', 'activity'] as const).map(col => {
+                    const active = sortBy === col;
+                    const label = col === 'fit' ? 'Fit' : col === 'newness' ? 'Newness' : 'Activity';
+                    return (
+                      <button
+                        key={col}
+                        onClick={() => handleSort(col)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit',
+                          color: active ? 'var(--accent)' : 'var(--text-dim)',
+                          padding: 0,
+                        }}
+                        title={`Sort by ${label}`}
+                      >
+                        {label}
+                        {active ? (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            {sortDir === 'desc' ? <polyline points="6 9 12 15 18 9"/> : <polyline points="6 15 12 9 18 15"/>}
+                          </svg>
+                        ) : (
+                          // Subtle two-arrow indicator that this is sortable
+                          <svg width="8" height="10" viewBox="0 0 8 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                            <polyline points="2 4 4 2 6 4"/>
+                            <polyline points="2 6 4 8 6 6"/>
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
                   <span />
                 </div>
 
