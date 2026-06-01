@@ -13,7 +13,6 @@ import { supabase } from '@/lib/supabase';
 export const maxDuration = 60; // Reddit fan-out + Google fetch + DB write
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'https://mtc-backend-rust.vercel.app';
-const KEEP_SNAPSHOTS = 2; // current + previous, for race-safety
 const RETENTION_HOURS = 48; // trends older than this are pruned
 
 type RawTrend = {
@@ -131,20 +130,24 @@ export async function GET(req: NextRequest) {
 
   if (google.length === 0 && reddit.length === 0) {
     return NextResponse.json(
-      { success: false, error: 'Both sources returned empty; not writing a snapshot' },
+      { success: false, error: 'Both sources returned empty; not updating the pool' },
       { status: 502 }
     );
   }
 
-  // 2. Read the latest snapshot to get the existing pool
-  const { data: latest } = await supabase
-    .from('pulse_trends_master')
-    .select('trends')
-    .order('refreshed_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // 2. Read the existing (non-expired) pool from the normalized pulse_trends
+  // table. This is the source of truth post-Phase-3 (snapshot table retired).
+  // We reconstruct RawTrend[] from each row's trend_data jsonb, overriding
+  // first_seen_at with the authoritative column value so merge identity holds.
+  const { data: existingRows } = await supabase
+    .from('pulse_trends')
+    .select('trend_data, first_seen_at')
+    .gt('expires_at', new Date().toISOString());
 
-  const existingPool: RawTrend[] = (latest?.trends as RawTrend[]) || [];
+  const existingPool: RawTrend[] = (existingRows || []).map(r => ({
+    ...(r.trend_data as RawTrend),
+    first_seen_at: r.first_seen_at,
+  }));
 
   // 3. Tag incoming trends with source + sortVelocity, then merge
   const now = new Date().toISOString();
@@ -155,46 +158,10 @@ export async function GET(req: NextRequest) {
   const googleInPool = merged.filter(t => t.source === 'google').length;
   const redditInPool = merged.filter(t => t.source === 'reddit').length;
 
-  // 4. Insert the merged snapshot
-  const { data: inserted, error: insertErr } = await supabase
-    .from('pulse_trends_master')
-    .insert({
-      trends: merged,
-      google_count: googleInPool,
-      reddit_count: redditInPool,
-      total_count: merged.length,
-    })
-    .select('id, refreshed_at')
-    .single();
-
-  if (insertErr || !inserted) {
-    return NextResponse.json(
-      { success: false, error: insertErr?.message || 'Insert failed' },
-      { status: 500 }
-    );
-  }
-
-  // 5. Prune old snapshot rows (keep latest N for race-safety)
-  const { data: keepRows } = await supabase
-    .from('pulse_trends_master')
-    .select('id')
-    .order('refreshed_at', { ascending: false })
-    .limit(KEEP_SNAPSHOTS);
-
-  const keepIds = (keepRows || []).map(r => r.id);
-  let pruned = 0;
-  if (keepIds.length > 0) {
-    const { error: deleteErr, count } = await supabase
-      .from('pulse_trends_master')
-      .delete({ count: 'exact' })
-      .not('id', 'in', `(${keepIds.join(',')})`);
-    if (!deleteErr) pruned = count || 0;
-  }
-
-  // 6. Phase 1 dual-write: also upsert each merged trend into pulse_trends.
+  // 4. Upsert each merged trend into pulse_trends (the only write target now).
   // expires_at refreshes to now + RETENTION on each re-appearance, so a trend
   // that keeps showing up keeps its TTL extended. first_seen_at is preserved
-  // by ON CONFLICT (only update specific fields).
+  // because the merge carries the original value through.
   const expiresAt = new Date(Date.now() + RETENTION_HOURS * 60 * 60 * 1000).toISOString();
   const trendRows = merged.map(t => ({
     id: t.id,
@@ -229,8 +196,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Prune expired trends from pulse_trends. Best-effort — don't fail the cron
-  // if this errors.
+  // 5. Prune expired trends from pulse_trends. Best-effort — don't fail the
+  // cron if this errors.
   const { count: trendsPruned } = await supabase
     .from('pulse_trends')
     .delete({ count: 'exact' })
@@ -238,16 +205,13 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    snapshot_id: inserted.id,
-    refreshed_at: inserted.refreshed_at,
+    refreshed_at: now,
     fresh_google: google.length,
     fresh_reddit: reddit.length,
     pool_total: merged.length,
     pool_google: googleInPool,
     pool_reddit: redditInPool,
     carried_over: existingPool.length,
-    pruned_snapshots: pruned,
-    // Phase 1 dual-write metrics
     trends_upserted: trendsUpserted,
     trends_pruned: trendsPruned || 0,
   });
