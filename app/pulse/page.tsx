@@ -382,6 +382,19 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
         if (d.success && d.platforms) {
           setLocalEnrichment(d.platforms);
           onEnrichmentLoaded?.(trend.id, d.platforms);
+          // Persist the unlock so it survives page reload and is available
+          // across devices. Fire-and-forget — UX shouldn't block on the write.
+          fetch('/api/pulse-unlocks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trend_id: trend.id,
+              bridge: localBridge || null,
+              youtube_query: youtubeQuery || null,
+              enrichment: d.platforms,
+              trend_snapshot: trend,
+            }),
+          }).catch(() => { /* swallow — DB write is best-effort */ });
         }
       })
       .catch(() => {})
@@ -391,35 +404,67 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   // Sync if parent cache updates
   useEffect(() => { if (enrichment) setLocalEnrichment(enrichment); }, [enrichment]);
 
-  // Fetch bridge on mount if not cached
+  // On mount: check Supabase for a persisted unlock first. If found, populate
+  // bridge + enrichment from there (zero Sonnet/ScrapeCreators calls). If not,
+  // fall back to fresh bridge generation. Skip the whole thing if the parent
+  // already passed a cached bridge (in-session hit).
   useEffect(() => {
-    if (localBridge || !creatorCtx?.brief) return;
+    if (localBridge && localEnrichment) return; // fully hydrated already
+    if (!creatorCtx?.brief) return;
+
+    let cancelled = false;
     setBridgeLoading(true);
-    fetch('/api/pulse-bridge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        trend_title: trend.query,
-        trend_categories: trend.categories || [],
-        trend_source: trendSource(trend),
-        brief: creatorCtx.brief,
-        platforms: creatorCtx.platforms,
-        content_format: creatorCtx.format,
-        content_styles: creatorCtx.styles,
-      }),
-    })
+
+    // First check: persisted unlock in Supabase
+    fetch(`/api/pulse-unlocks?trend_id=${encodeURIComponent(trend.id)}`)
       .then(r => r.json())
-      .then(d => {
-        if (d.success && d.bridge) {
-          setLocalBridge(d.bridge);
-          onBridgeLoaded?.(trend.id, d.bridge);
+      .then(data => {
+        if (cancelled) return;
+        if (data.success && data.unlock) {
+          // Hit — populate from DB, skip Sonnet entirely
+          const u = data.unlock;
+          if (u.bridge) {
+            setLocalBridge(u.bridge);
+            onBridgeLoaded?.(trend.id, u.bridge);
+          }
+          if (u.youtube_query) setYoutubeQuery(u.youtube_query);
+          if (u.enrichment) {
+            setLocalEnrichment(u.enrichment);
+            onEnrichmentLoaded?.(trend.id, u.enrichment);
+          }
+          setBridgeLoading(false);
+          return;
         }
-        if (d.success && d.youtube_query) {
-          setYoutubeQuery(d.youtube_query);
-        }
+        // Miss — fall back to fresh bridge generation
+        return fetch('/api/pulse-bridge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trend_title: trend.query,
+            trend_categories: trend.categories || [],
+            trend_source: trendSource(trend),
+            brief: creatorCtx.brief,
+            platforms: creatorCtx.platforms,
+            content_format: creatorCtx.format,
+            content_styles: creatorCtx.styles,
+          }),
+        })
+          .then(r => r.json())
+          .then(d => {
+            if (cancelled) return;
+            if (d.success && d.bridge) {
+              setLocalBridge(d.bridge);
+              onBridgeLoaded?.(trend.id, d.bridge);
+            }
+            if (d.success && d.youtube_query) {
+              setYoutubeQuery(d.youtube_query);
+            }
+          })
+          .finally(() => { if (!cancelled) setBridgeLoading(false); });
       })
-      .catch(() => {})
-      .finally(() => setBridgeLoading(false));
+      .catch(() => { if (!cancelled) setBridgeLoading(false); });
+
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
