@@ -208,6 +208,24 @@ Score every topic for THIS creator and return the JSON array.`;
       return NextResponse.json({ success: true, scores: [], note: 'parse_failed' });
     }
 
+    // Sonnet occasionally drops items from large batches or returns an invalid
+    // fit for an item. Fill in any trend we sent but didn't get a fit back for
+    // with 'low' as a defensive default — this prevents the "—" empty-fit
+    // display and ensures the cache covers everything we asked about. Next
+    // refresh, if the trend is still around, can re-score it via a manual
+    // brief change.
+    const returnedIds = new Set(scores.map(s => s.id));
+    let droppedCount = 0;
+    for (const t of trends) {
+      if (!returnedIds.has(t.id)) {
+        scores.push({ id: t.id, fit: 'low' });
+        droppedCount++;
+      }
+    }
+    if (droppedCount > 0) {
+      console.warn(`[pulse-relevance] Sonnet dropped ${droppedCount}/${trends.length} trends — defaulted to 'low'`);
+    }
+
     // Per-trend cache write: one row per (user, trend, brief). With stable
     // trend IDs across the 48h pool, these rows survive cron refreshes and
     // subsequent pulse-feed reads pull cached fits directly.

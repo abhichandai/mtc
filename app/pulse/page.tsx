@@ -709,7 +709,7 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                           {item.title}
                         </span>
                         <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
                           fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)',
                         }}>
                           <span style={{ fontWeight: 600 }}>{item.author}</span>
@@ -721,10 +721,46 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                               letterSpacing: '0.02em',
                             }}>{recency.label}</span>
                           )}
-                          {(item.likes != null && item.likes > 0) && <span>{formatVolume(item.likes)} likes</span>}
-                          {(item.views != null && item.views > 0) && <span>{formatVolume(item.views)} views</span>}
-                          {(item.plays != null && item.plays > 0) && <span>{formatVolume(item.plays)} plays</span>}
-                          {(item.comments != null && item.comments > 0) && <span>{formatVolume(item.comments)} comments</span>}
+                          {(item.views != null && item.views > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.views)} views</span>
+                          )}
+                          {(item.plays != null && item.plays > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.plays)} plays</span>
+                          )}
+                          {(item.likes != null && item.likes > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.likes)} likes</span>
+                          )}
+                          {(item.comments != null && item.comments > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.comments)} comments</span>
+                          )}
+                          {(item.shares != null && item.shares > 0) && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: 'var(--text-muted)', background: 'var(--surface-1)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 7px', borderRadius: 100, letterSpacing: '0.02em',
+                            }}>{formatVolume(item.shares)} shares</span>
+                          )}
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
                             <path d="M7 17L17 7M7 7h10v10"/>
                           </svg>
