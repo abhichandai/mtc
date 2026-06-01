@@ -334,6 +334,7 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   const category = trend.categories?.[0] || 'Trending';
   const [bridgeLoading, setBridgeLoading] = useState(false);
   const [localBridge, setLocalBridge] = useState(bridge || '');
+  const [youtubeQuery, setYoutubeQuery] = useState<string>('');
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [localEnrichment, setLocalEnrichment] = useState<EnrichmentData | null>(enrichment || null);
   const [collapsedPlatforms, setCollapsedPlatforms] = useState<Set<string>>(new Set());
@@ -341,7 +342,9 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   const handleUnlock = () => {
     if (enrichLoading || localEnrichment) return;
     setEnrichLoading(true);
-    fetch(`/api/pulse-unlock?query=${encodeURIComponent(trend.query)}&limit=5`)
+    const params = new URLSearchParams({ query: trend.query, limit: '5' });
+    if (youtubeQuery) params.set('youtube_query', youtubeQuery);
+    fetch(`/api/pulse-unlock?${params.toString()}`)
       .then(r => r.json())
       .then(d => {
         if (d.success && d.platforms) {
@@ -378,6 +381,9 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
         if (d.success && d.bridge) {
           setLocalBridge(d.bridge);
           onBridgeLoaded?.(trend.id, d.bridge);
+        }
+        if (d.success && d.youtube_query) {
+          setYoutubeQuery(d.youtube_query);
         }
       })
       .catch(() => {})

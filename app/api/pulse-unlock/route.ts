@@ -7,13 +7,16 @@ const BACKEND_URL = process.env.BACKEND_URL || 'https://mtc-backend-rust.vercel.
 export async function GET(req: NextRequest) {
   const query = req.nextUrl.searchParams.get('query') || '';
   const limit = req.nextUrl.searchParams.get('limit') || '5';
+  const youtubeQuery = req.nextUrl.searchParams.get('youtube_query') || '';
 
   if (!query) {
     return NextResponse.json({ success: false, error: 'query required' }, { status: 400 });
   }
 
   try {
-    const url = `${BACKEND_URL}/pulse/enrich?query=${encodeURIComponent(query)}&limit=${limit}`;
+    const params = new URLSearchParams({ query, limit });
+    if (youtubeQuery) params.set('youtube_query', youtubeQuery);
+    const url = `${BACKEND_URL}/pulse/enrich?${params.toString()}`;
     const resp = await fetch(url, { next: { revalidate: 0 } });
 
     if (!resp.ok) {
