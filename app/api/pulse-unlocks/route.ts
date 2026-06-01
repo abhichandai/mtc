@@ -25,17 +25,34 @@ async function resolveBriefHash(userId: string, bodyHash?: string): Promise<stri
   );
 }
 
-// GET /api/pulse-unlocks?trend_id=X
-// Returns: { success: true, unlock: { bridge, youtube_query, enrichment, ... } | null }
+// GET /api/pulse-unlocks?trend_id=X      → single unlock for that trend
+// GET /api/pulse-unlocks?saved=true       → all saved unlocks for current user (any brief)
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Saved-list mode: return all rows where saved_to_list=true for this user.
+  // No brief filter — saved items persist across brief changes.
+  if (req.nextUrl.searchParams.get('saved') === 'true') {
+    const { data, error } = await supabase
+      .from('pulse_unlocks')
+      .select('trend_id, bridge, youtube_query, enrichment, trend_snapshot, unlocked_at, saved_to_list, brief_hash')
+      .eq('user_id', userId)
+      .eq('saved_to_list', true)
+      .order('unlocked_at', { ascending: false });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, unlocks: data || [] });
+  }
+
+  // Single-trend mode (original behavior)
   const trendId = req.nextUrl.searchParams.get('trend_id');
   if (!trendId) {
-    return NextResponse.json({ error: 'trend_id required' }, { status: 400 });
+    return NextResponse.json({ error: 'trend_id or saved=true required' }, { status: 400 });
   }
 
   const hash = await resolveBriefHash(userId);
@@ -111,6 +128,71 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase
     .from('pulse_unlocks')
     .upsert(row, { onConflict: 'user_id,trend_id,brief_hash' });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
+
+// PATCH /api/pulse-unlocks
+// Body: { trend_id, saved_to_list?: boolean, brief_hash?: string }
+// Currently the only patchable field is saved_to_list (My List toggle).
+export async function PATCH(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  let body: { trend_id?: string; saved_to_list?: boolean; brief_hash?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  if (!body.trend_id || typeof body.saved_to_list !== 'boolean') {
+    return NextResponse.json({ error: 'trend_id and saved_to_list required' }, { status: 400 });
+  }
+
+  const hash = await resolveBriefHash(userId, body.brief_hash);
+
+  const { error } = await supabase
+    .from('pulse_unlocks')
+    .update({ saved_to_list: body.saved_to_list })
+    .eq('user_id', userId)
+    .eq('trend_id', body.trend_id)
+    .eq('brief_hash', hash);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}
+
+// DELETE /api/pulse-unlocks?trend_id=X
+// Permanently removes the row. Use PATCH with saved_to_list=false if you
+// just want to unsave but keep the cached unlock around.
+export async function DELETE(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const trendId = req.nextUrl.searchParams.get('trend_id');
+  if (!trendId) {
+    return NextResponse.json({ error: 'trend_id required' }, { status: 400 });
+  }
+
+  // Delete the row for the user across all brief_hashes for this trend_id.
+  // If we ever need brief-specific deletion, accept brief_hash in the URL.
+  const { error } = await supabase
+    .from('pulse_unlocks')
+    .delete()
+    .eq('user_id', userId)
+    .eq('trend_id', trendId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

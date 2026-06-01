@@ -388,6 +388,22 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [localEnrichment, setLocalEnrichment] = useState<EnrichmentData | null>(enrichment || null);
   const [collapsedPlatforms, setCollapsedPlatforms] = useState<Set<string>>(new Set());
+  const [savedToList, setSavedToList] = useState(false);
+  const [savingToList, setSavingToList] = useState(false);
+
+  const toggleSaved = () => {
+    if (savingToList) return;
+    const next = !savedToList;
+    setSavedToList(next); // optimistic
+    setSavingToList(true);
+    fetch('/api/pulse-unlocks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trend_id: trend.id, saved_to_list: next }),
+    })
+      .catch(() => setSavedToList(!next)) // rollback on failure
+      .finally(() => setSavingToList(false));
+  };
 
   const handleUnlock = () => {
     if (enrichLoading || localEnrichment) return;
@@ -449,6 +465,9 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
           if (u.enrichment) {
             setLocalEnrichment(u.enrichment);
             onEnrichmentLoaded?.(trend.id, u.enrichment);
+          }
+          if (typeof u.saved_to_list === 'boolean') {
+            setSavedToList(u.saved_to_list);
           }
           setBridgeLoading(false);
           return;
@@ -666,6 +685,44 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
               <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
             Your angle
+            {/* Save to My List — only after unlock (we want the user to have seen the full content first) */}
+            {localEnrichment && (
+              <button
+                onClick={toggleSaved}
+                disabled={savingToList}
+                title={savedToList ? 'Remove from My List' : 'Save to My List'}
+                style={{
+                  marginLeft: 'auto',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
+                  textTransform: 'none',
+                  color: savedToList ? '#16a34a' : 'var(--accent)',
+                  background: savedToList ? 'rgba(22,163,74,0.08)' : 'transparent',
+                  border: `1px solid ${savedToList ? '#16a34a' : 'var(--accent)'}`,
+                  borderRadius: 7, padding: '5px 11px',
+                  cursor: savingToList ? 'wait' : 'pointer',
+                  opacity: savingToList ? 0.6 : 1,
+                  fontFamily: 'var(--font-ui)',
+                  transition: 'background 0.12s',
+                }}
+              >
+                {savedToList ? (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Save to My List
+                  </>
+                )}
+              </button>
+            )}
           </div>
           {bridgeLoading ? (
             <div className="pulse-shimmer" style={{
