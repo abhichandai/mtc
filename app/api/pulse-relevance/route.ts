@@ -81,33 +81,49 @@ export async function POST(req: NextRequest) {
 
     let trends: IncomingTrend[] = [];
 
-    if (masterRefreshId !== null) {
-      // New flow — read trends from the master pool snapshot
-      const { data: master, error: masterErr } = await supabase
-        .from('pulse_trends_master')
-        .select('id, trends')
-        .eq('id', masterRefreshId)
-        .maybeSingle();
+    // Phase 2: prefer pulse_trends table as source of truth.
+    // If client sends `missing_ids`, look up exactly those rows.
+    // If `master_refresh_id` is provided but no missing_ids, the client wants
+    // a full re-score (e.g., brief changed) — read all active trends.
+    // If neither, fall back to legacy `trends` in body (dashboard path).
+    const missingIds: string[] | null =
+      Array.isArray(body?.missing_ids) && body.missing_ids.length > 0
+        ? body.missing_ids.filter((x: unknown) => typeof x === 'string')
+        : null;
 
-      if (masterErr) {
-        return NextResponse.json({ error: masterErr.message }, { status: 500 });
+    if (missingIds) {
+      // Score only the specified trends — look them up by id
+      const { data: rows, error: rowsErr } = await supabase
+        .from('pulse_trends')
+        .select('id, query, trend_data, categories')
+        .in('id', missingIds);
+      if (rowsErr) {
+        return NextResponse.json({ error: rowsErr.message }, { status: 500 });
       }
-      if (!master) {
-        return NextResponse.json(
-          { error: 'master_refresh_id no longer exists', code: 'stale_snapshot' },
-          { status: 410 }
-        );
+      trends = (rows || []).map(r => ({
+        id: r.id,
+        query: r.query,
+        categories: r.categories || [],
+        trend_breakdown: (r.trend_data as { trend_breakdown?: string[] })?.trend_breakdown || [],
+      }));
+    } else if (masterRefreshId !== null) {
+      // Full re-score of the active pool (no missing_ids = score everything)
+      const nowIso = new Date().toISOString();
+      const { data: rows, error: rowsErr } = await supabase
+        .from('pulse_trends')
+        .select('id, query, trend_data, categories')
+        .gt('expires_at', nowIso);
+      if (rowsErr) {
+        return NextResponse.json({ error: rowsErr.message }, { status: 500 });
       }
-      const allTrends = Array.isArray(master.trends) ? (master.trends as IncomingTrend[]) : [];
-
-      // If client passed a list of trend IDs that need scoring, only score those.
-      // Otherwise score all (e.g. brief just changed, full re-score needed).
-      const missingIds: string[] | null = Array.isArray(body?.missing_ids) ? body.missing_ids : null;
-      trends = missingIds
-        ? allTrends.filter(t => missingIds.includes(t.id))
-        : allTrends;
+      trends = (rows || []).map(r => ({
+        id: r.id,
+        query: r.query,
+        categories: r.categories || [],
+        trend_breakdown: (r.trend_data as { trend_breakdown?: string[] })?.trend_breakdown || [],
+      }));
     } else {
-      // Legacy flow — trends come from the client
+      // Legacy dashboard path — trends come from the client
       trends = Array.isArray(body?.trends) ? body.trends : [];
     }
 
