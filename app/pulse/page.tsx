@@ -341,24 +341,24 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast, un
         {compactMetric}
       </span>
       {unlocked ? (
-        // Open padlock (unlocked) — accent color
+        // Open padlock — green, matching AIE's #16a34a
         <svg
           width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke={hover ? 'var(--accent)' : 'var(--accent)'}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
+          stroke="#16a34a"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
           aria-label="Unlocked"
         >
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
         </svg>
       ) : (
-        // Closed padlock (locked) — muted color until hover
+        // Closed padlock — red
         <svg
           width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke={hover ? 'var(--accent)' : 'var(--text-dim)'}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
+          stroke="#dc2626"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
           aria-label="Locked — click to unlock"
         >
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
