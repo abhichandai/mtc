@@ -86,13 +86,26 @@ function mergePool(existing: RawTrend[], incoming: RawTrend[], now: string): Raw
     .sort((a, b) => (b.sortVelocity ?? 0) - (a.sortVelocity ?? 0));
 }
 
-async function fetchSource(url: string): Promise<RawTrend[]> {
+async function fetchSource(url: string, label: string): Promise<RawTrend[]> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(45000) });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`[pulse-master-refresh] ${label} HTTP ${res.status} from ${url}`);
+      return [];
+    }
     const data = await res.json();
-    return data.success && Array.isArray(data.trends) ? data.trends : [];
-  } catch {
+    if (!data.success) {
+      console.error(`[pulse-master-refresh] ${label} success=false: ${data.error || 'unknown error'}`);
+      return [];
+    }
+    const trends = Array.isArray(data.trends) ? data.trends : [];
+    if (trends.length === 0) {
+      console.warn(`[pulse-master-refresh] ${label} returned 0 trends (legitimate empty response)`);
+    }
+    return trends;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pulse-master-refresh] ${label} fetch failed: ${msg}`);
     return [];
   }
 }
@@ -112,8 +125,8 @@ export async function GET(req: NextRequest) {
 
   // 1. Fetch both sources in parallel
   const [google, reddit] = await Promise.all([
-    fetchSource(`${BACKEND_URL}/pulse/trends/raw?geo=US&limit=24`),
-    fetchSource(`${BACKEND_URL}/pulse/trends/reddit?limit=24`),
+    fetchSource(`${BACKEND_URL}/pulse/trends/raw?geo=US&limit=24`, 'google'),
+    fetchSource(`${BACKEND_URL}/pulse/trends/reddit?limit=24`, 'reddit'),
   ]);
 
   if (google.length === 0 && reddit.length === 0) {
@@ -178,6 +191,51 @@ export async function GET(req: NextRequest) {
     if (!deleteErr) pruned = count || 0;
   }
 
+  // 6. Phase 1 dual-write: also upsert each merged trend into pulse_trends.
+  // expires_at refreshes to now + RETENTION on each re-appearance, so a trend
+  // that keeps showing up keeps its TTL extended. first_seen_at is preserved
+  // by ON CONFLICT (only update specific fields).
+  const expiresAt = new Date(Date.now() + RETENTION_HOURS * 60 * 60 * 1000).toISOString();
+  const trendRows = merged.map(t => ({
+    id: t.id,
+    source: t.source || 'google',
+    query: t.query,
+    first_seen_at: t.first_seen_at || now,
+    last_seen_at: now,
+    expires_at: expiresAt,
+    trend_data: t,
+    categories: t.categories || [],
+  }));
+
+  let trendsUpserted = 0;
+  if (trendRows.length > 0) {
+    // Chunk in case of large pools — Supabase has a per-request size cap.
+    const CHUNK = 100;
+    for (let i = 0; i < trendRows.length; i += CHUNK) {
+      const chunk = trendRows.slice(i, i + CHUNK);
+      const { error: upsertErr, count } = await supabase
+        .from('pulse_trends')
+        .upsert(chunk, {
+          onConflict: 'id',
+          // Don't overwrite first_seen_at on conflict — keep the original
+          ignoreDuplicates: false,
+          count: 'exact',
+        });
+      if (upsertErr) {
+        console.error(`[pulse-master-refresh] pulse_trends upsert failed: ${upsertErr.message}`);
+      } else {
+        trendsUpserted += count || 0;
+      }
+    }
+  }
+
+  // Prune expired trends from pulse_trends. Best-effort — don't fail the cron
+  // if this errors.
+  const { count: trendsPruned } = await supabase
+    .from('pulse_trends')
+    .delete({ count: 'exact' })
+    .lt('expires_at', new Date().toISOString());
+
   return NextResponse.json({
     success: true,
     snapshot_id: inserted.id,
@@ -189,5 +247,8 @@ export async function GET(req: NextRequest) {
     pool_reddit: redditInPool,
     carried_over: existingPool.length,
     pruned_snapshots: pruned,
+    // Phase 1 dual-write metrics
+    trends_upserted: trendsUpserted,
+    trends_pruned: trendsPruned || 0,
   });
 }
