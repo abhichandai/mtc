@@ -101,6 +101,7 @@ type EnrichmentItem = {
   shares?: number;
   followers?: number;
   is_short?: boolean;
+  posted_at?: string | null;  // ISO 8601 UTC; null if platform didn't return it
 };
 
 type EnrichmentPlatform = {
@@ -147,6 +148,26 @@ function newnessStyle(tier: NewnessTier): { label: string; color: string; bg: st
     case '<48h':     return { label: '< 48h',       color: 'var(--text-dim)', bg: 'var(--surface-2)' };
     default:         return { label: '48h+',        color: 'var(--text-dim)', bg: 'var(--surface-2)' };
   }
+}
+
+// ─── Post recency badge (for enrichment items) ──────────────────────────────
+// Distinct from `newnessTier` which measures how long a trend has been in our
+// pool. This measures how long ago a specific TikTok/YouTube/IG/LinkedIn post
+// was published — the "what people are saying RIGHT NOW" signal.
+function postRecency(postedAt?: string | null): { label: string; color: string; bg: string } | null {
+  if (!postedAt) return null;
+  const ms = Date.now() - new Date(postedAt).getTime();
+  if (isNaN(ms) || ms < 0) return null;
+  const hours = ms / (1000 * 60 * 60);
+  const days = hours / 24;
+
+  if (hours < 1)  return { label: 'just now',   color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+  if (hours < 24) return { label: `${Math.floor(hours)}h ago`, color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+  if (days < 2)   return { label: 'yesterday',  color: '#0891b2', bg: 'rgba(8,145,178,0.10)' };
+  if (days < 7)   return { label: `${Math.floor(days)}d ago`,  color: '#0891b2', bg: 'rgba(8,145,178,0.10)' };
+  if (days < 30)  return { label: `${Math.floor(days / 7)}w ago`, color: 'var(--text-muted)', bg: 'var(--surface-2)' };
+  if (days < 365) return { label: `${Math.floor(days / 30)}mo ago`, color: 'var(--text-dim)', bg: 'var(--surface-2)' };
+  return { label: `${Math.floor(days / 365)}y ago`, color: 'var(--text-dim)', bg: 'var(--surface-2)' };
 }
 
 // ─── Source identification ───────────────────────────────────────────────────
@@ -661,7 +682,9 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                   </button>
                   {!collapsedPlatforms.has(platformKey) && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {platform.items.map((item, idx) => (
+                    {platform.items.map((item, idx) => {
+                      const recency = postRecency(item.posted_at);
+                      return (
                       <a
                         key={idx}
                         href={item.url}
@@ -686,10 +709,18 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                           {item.title}
                         </span>
                         <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
+                          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
                           fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-ui)',
                         }}>
                           <span style={{ fontWeight: 600 }}>{item.author}</span>
+                          {recency && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700,
+                              color: recency.color, background: recency.bg,
+                              padding: '2px 7px', borderRadius: 100,
+                              letterSpacing: '0.02em',
+                            }}>{recency.label}</span>
+                          )}
                           {(item.likes != null && item.likes > 0) && <span>{formatVolume(item.likes)} likes</span>}
                           {(item.views != null && item.views > 0) && <span>{formatVolume(item.views)} views</span>}
                           {(item.plays != null && item.plays > 0) && <span>{formatVolume(item.plays)} plays</span>}
@@ -699,7 +730,8 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                           </svg>
                         </div>
                       </a>
-                    ))}
+                      );
+                    })}
                   </div>
                   )}
                 </div>
