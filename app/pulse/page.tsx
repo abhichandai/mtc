@@ -305,7 +305,18 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
       ) : relevanceLoading ? (
         <span className="pulse-shimmer" style={{ width: 70, height: 18, borderRadius: 100, display: 'inline-block', justifySelf: 'center' }} />
       ) : (
-        <span style={{ fontSize: 11, color: 'var(--text-dim)', fontStyle: 'italic', justifySelf: 'center' }}>—</span>
+        <span
+          title="Score couldn't be computed for this trend. It'll retry on next refresh."
+          style={{
+            fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em',
+            color: 'var(--text-dim)', background: 'var(--surface-2)',
+            border: '1px dashed var(--border)',
+            padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
+            justifySelf: 'center',
+          }}
+        >
+          Unscored
+        </span>
       )}
       {(() => {
         const tier = newnessTier(trend.first_seen_at);
@@ -652,7 +663,12 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
               const platform = localEnrichment[platformKey];
               if (!platform || platform.items.length === 0) return null;
               return (
-                <div key={platformKey}>
+                <div key={platformKey} style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  background: 'var(--surface-1)',
+                  overflow: 'hidden',
+                }}>
                   <button
                     onClick={() => setCollapsedPlatforms(prev => {
                       const next = new Set(prev);
@@ -660,28 +676,39 @@ function PulseTrendDetail({ trend, relevance, onClose, bridge, onBridgeLoaded, c
                       return next;
                     })}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, marginBottom: collapsedPlatforms.has(platformKey) ? 0 : 10,
-                      fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
-                      color: 'var(--text-dim)', fontFamily: 'var(--font-ui)',
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      padding: '4px 0', width: '100%', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                      color: 'var(--text)', fontFamily: 'var(--font-ui)',
+                      background: 'var(--surface-2)', border: 'none',
+                      borderBottom: collapsedPlatforms.has(platformKey) ? 'none' : '1px solid var(--border)',
+                      cursor: 'pointer',
+                      padding: '12px 16px', width: '100%', textAlign: 'left',
+                      transition: 'background 0.15s ease',
                     }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-3, var(--surface-2))')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                   >
-                    <PlatformIcon platform={platformKey} size={15} />
+                    <PlatformIcon platform={platformKey} size={18} />
                     {platform.name}
-                    <span style={{ fontWeight: 500, fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em', textTransform: 'none' }}>
+                    <span style={{
+                      fontWeight: 600, fontSize: 10,
+                      color: 'var(--text-muted)', background: 'var(--surface-1)',
+                      border: '1px solid var(--border)',
+                      padding: '2px 8px', borderRadius: 100, letterSpacing: '0.02em',
+                      textTransform: 'none',
+                    }}>
                       {platform.items.length} result{platform.items.length !== 1 ? 's' : ''}
                     </span>
                     <svg
-                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                       strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                      style={{ marginLeft: 'auto', transition: 'transform 0.15s ease', transform: collapsedPlatforms.has(platformKey) ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                      style={{ marginLeft: 'auto', transition: 'transform 0.15s ease', transform: collapsedPlatforms.has(platformKey) ? 'rotate(-90deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}
                     >
                       <path d="M6 9l6 6 6-6"/>
                     </svg>
                   </button>
                   {!collapsedPlatforms.has(platformKey) && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10 }}>
                     {platform.items.map((item, idx) => {
                       const recency = postRecency(item.posted_at);
                       return (
