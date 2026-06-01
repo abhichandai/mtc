@@ -90,7 +90,17 @@ export async function GET() {
 
   const cachedScores = (cachedRows || []).map(r => ({ id: r.trend_id, fit: r.fit }));
 
-  // 5. cache_state coverage
+  // 5. Look up which of these trends the user has unlocked (for lock/unlock icon)
+  const { data: unlockRows } = await supabase
+    .from('pulse_unlocks')
+    .select('trend_id')
+    .eq('user_id', userId)
+    .eq('brief_hash', currentBriefHash)
+    .in('trend_id', trendIds);
+
+  const unlockedIds = (unlockRows || []).map(r => r.trend_id);
+
+  // 6. cache_state coverage
   const total = trendIds.length;
   const cached = cachedScores.length;
   const cacheState =
@@ -98,7 +108,7 @@ export async function GET() {
     cached < total ? 'partial' :
     'hit';
 
-  // 6. Compute source counts + a freshness signal
+  // 7. Compute source counts + a freshness signal (was step 6 before unlock lookup)
   const googleCount = trends.filter(t => t.source === 'google').length;
   const redditCount = trends.filter(t => t.source === 'reddit').length;
   const mostRecentLastSeen = trendRows.reduce(
@@ -121,5 +131,6 @@ export async function GET() {
     cached_count: cached,
     total_count_in_pool: total,
     cache_state: cacheState,
+    unlocked_ids: unlockedIds,
   });
 }

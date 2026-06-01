@@ -39,6 +39,7 @@ type PulseFeedResponse = {
   scores: Array<{ id: string; fit: string }> | null;
   scored_at?: string | null;
   cache_state?: 'hit' | 'partial' | 'miss_no_cache' | 'empty_master_pool';
+  unlocked_ids?: string[];
   error?: string;
 };
 
@@ -230,13 +231,14 @@ function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number
 }
 
 // ─── Pulse Row (Chunk B — table layout, click to open detail modal) ──────────
-function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: {
+function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast, unlocked }: {
   trend: PulseTrend;
   rank: number;
   relevance?: RelevanceScore;
   relevanceLoading: boolean;
   onOpen: () => void;
   isLast?: boolean;
+  unlocked?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const source = trendSource(trend);
@@ -338,15 +340,31 @@ function PulseRow({ trend, rank, relevance, relevanceLoading, onOpen, isLast }: 
       }}>
         {compactMetric}
       </span>
-      <svg
-        width="14" height="14" viewBox="0 0 24 24" fill="none"
-        stroke={hover ? 'var(--accent)' : 'var(--text-dim)'}
-        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-        style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'translateX(2px)' : 'none' }}
-        aria-label="Open detail"
-      >
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
+      {unlocked ? (
+        // Open padlock (unlocked) — accent color
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke={hover ? 'var(--accent)' : 'var(--accent)'}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
+          aria-label="Unlocked"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        </svg>
+      ) : (
+        // Closed padlock (locked) — muted color until hover
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke={hover ? 'var(--accent)' : 'var(--text-dim)'}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'stroke 0.12s, transform 0.15s', transform: hover ? 'scale(1.1)' : 'none' }}
+          aria-label="Locked — click to unlock"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      )}
     </button>
   );
 }
@@ -1014,6 +1032,7 @@ export default function PulsePage() {
   }, [selectedTrend]);
   const [bridgeCache, setBridgeCache] = useState<Record<string, string>>({});
   const [enrichmentCache, setEnrichmentCache] = useState<Record<string, EnrichmentData>>({});
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
 
   // Creator context held in a ref so scoreRelevance always reads the latest
   const creatorCtxRef = useRef<{ brief: string; platforms: string[]; format: string; styles: string[] }>({
@@ -1120,6 +1139,9 @@ export default function PulsePage() {
         // No cached scores at all — clear so the shimmer shows on existing rows.
         setRelevance({});
       }
+
+      // Populate unlocked state for lock/unlock icons
+      setUnlockedIds(new Set(data.unlocked_ids || []));
     } catch {
       setError('Could not load trends right now.');
     } finally {
@@ -1444,6 +1466,7 @@ export default function PulsePage() {
                     relevanceLoading={relevanceLoading}
                     onOpen={() => setSelectedTrend(trend)}
                     isLast={i === pageTrends.length - 1}
+                    unlocked={unlockedIds.has(trend.id)}
                   />
                 ))}
               </div>
@@ -1533,7 +1556,17 @@ export default function PulsePage() {
               onBridgeLoaded={(id, b) => setBridgeCache(prev => ({ ...prev, [id]: b }))}
               creatorCtx={creatorCtxRef.current}
               enrichment={enrichmentCache[selectedTrend.id]}
-              onEnrichmentLoaded={(id, data) => setEnrichmentCache(prev => ({ ...prev, [id]: data }))}
+              onEnrichmentLoaded={(id, data) => {
+                setEnrichmentCache(prev => ({ ...prev, [id]: data }));
+                // Optimistically mark as unlocked so the row icon flips
+                // without waiting for the next feed fetch.
+                setUnlockedIds(prev => {
+                  if (prev.has(id)) return prev;
+                  const next = new Set(prev);
+                  next.add(id);
+                  return next;
+                });
+              }}
             />
           </div>
         </>
