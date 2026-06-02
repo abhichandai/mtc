@@ -95,7 +95,7 @@ Content styles: ${styleStr}
 Write the bridge.`;
 
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],

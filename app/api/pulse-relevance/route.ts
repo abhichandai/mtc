@@ -182,13 +182,22 @@ ${trendList}
 Score every topic for THIS creator and return the JSON array.`;
 
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 4000,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 16384,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     });
 
     const text = resp.content[0].type === 'text' ? resp.content[0].text : '';
+
+    // Detect output truncation — if stop_reason is 'max_tokens', the JSON is
+    // almost certainly invalid. Log it so we can diagnose in Vercel Functions.
+    if (resp.stop_reason === 'max_tokens') {
+      console.error(
+        `[pulse-relevance] Sonnet output truncated (max_tokens hit) for ${trends.length} trends. ` +
+        `Response length: ${text.length} chars. Increase max_tokens or batch.`
+      );
+    }
 
     // Defensive parse — strip fences, fall back to neutral scores on failure
     let scores: Array<{ id: string; fit: string }> = [];
@@ -205,6 +214,10 @@ Score every topic for THIS creator and return the JSON array.`;
     } catch {
       // parse failed — return empty so the client renders trends without a signal.
       // Don't cache this either; next page load should retry.
+      console.error(
+        `[pulse-relevance] JSON parse failed for ${trends.length} trends. ` +
+        `stop_reason=${resp.stop_reason}. First 200 chars: ${text.slice(0, 200)}`
+      );
       return NextResponse.json({ success: true, scores: [], note: 'parse_failed' });
     }
 

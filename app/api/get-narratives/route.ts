@@ -198,7 +198,7 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
 }`;
 
     const claudeResponse = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       system: SYSTEM_PROMPT + '\n\n' + creatorContext,
       messages: [{ role: 'user', content: userMessage }],
