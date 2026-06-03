@@ -159,20 +159,27 @@ export async function GET(req: NextRequest) {
   const redditInPool = merged.filter(t => t.source === 'reddit').length;
 
   // 4. Upsert each merged trend into pulse_trends (the only write target now).
-  // expires_at refreshes to now + RETENTION on each re-appearance, so a trend
-  // that keeps showing up keeps its TTL extended. first_seen_at is preserved
-  // because the merge carries the original value through.
-  const expiresAt = new Date(Date.now() + RETENTION_HOURS * 60 * 60 * 1000).toISOString();
-  const trendRows = merged.map(t => ({
-    id: t.id,
-    source: t.source || 'google',
-    query: t.query,
-    first_seen_at: t.first_seen_at || now,
-    last_seen_at: now,
-    expires_at: expiresAt,
-    trend_data: t,
-    categories: t.categories || [],
-  }));
+  // expires_at is first_seen_at + RETENTION — a trend has a hard lifespan of
+  // RETENTION_HOURS from when it FIRST appeared, regardless of how long it keeps
+  // trending. This puts the merge cutoff, the prune, and the feed all on a single
+  // first-seen clock, so there are no frozen-but-unpruned trends lingering past
+  // the window.
+  const trendRows = merged.map(t => {
+    const firstSeen = t.first_seen_at || now;
+    const expiresAt = new Date(
+      new Date(firstSeen).getTime() + RETENTION_HOURS * 60 * 60 * 1000
+    ).toISOString();
+    return {
+      id: t.id,
+      source: t.source || 'google',
+      query: t.query,
+      first_seen_at: firstSeen,
+      last_seen_at: now,
+      expires_at: expiresAt,
+      trend_data: t,
+      categories: t.categories || [],
+    };
+  });
 
   let trendsUpserted = 0;
   if (trendRows.length > 0) {
