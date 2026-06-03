@@ -1132,15 +1132,20 @@ export default function PulsePage() {
   useEffect(() => { setHiddenCats(loadHiddenCategories()); }, []);
 
   // Score relevance for the trends that don't have a cached fit yet.
-  // missingIds=null means score everything (e.g. brief changed); a non-empty
-  // array means only score those, and merge results into existing state.
+  // Batches IDs into groups of BATCH_SIZE and fires them in parallel.
+  // As each batch resolves, scores merge into state and cards re-sort
+  // progressively — the user sees results in 2-3s instead of waiting 30s+.
+  const BATCH_SIZE = 15;
+
   const scoreRelevance = useCallback(async (masterRefreshId: number, missingIds: string[] | null) => {
-    // Only clear state on a full re-score. On a partial fill, keep existing fits.
     if (missingIds === null) setRelevance({});
     setRelevanceLoading(true);
-    try {
-      const ctx = creatorCtxRef.current;
-      const res = await fetch('/api/pulse-relevance', {
+
+    const ctx = creatorCtxRef.current;
+
+    // Helper: fire a single batch and merge results into state on completion
+    const scoreBatch = (batchIds: string[]) =>
+      fetch('/api/pulse-relevance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1149,23 +1154,39 @@ export default function PulsePage() {
           platforms: ctx.platforms,
           content_format: ctx.format,
           content_styles: ctx.styles,
-          ...(missingIds ? { missing_ids: missingIds } : {}),
+          missing_ids: batchIds,
         }),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.scores)) {
-        setRelevance(prev => {
-          const next = missingIds === null ? {} : { ...prev };
-          for (const s of data.scores) {
-            if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
-              next[s.id] = { fit: s.fit };
-            }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.scores)) {
+            setRelevance(prev => {
+              const next = { ...prev };
+              for (const s of data.scores) {
+                if (s?.id && (s.fit === 'high' || s.fit === 'medium' || s.fit === 'low')) {
+                  next[s.id] = { fit: s.fit };
+                }
+              }
+              return next;
+            });
           }
-          return next;
-        });
+        })
+        .catch(() => { /* individual batch failed — those trends stay unscored */ });
+
+    // Split into batches and fire in parallel
+    const ids = missingIds ?? [];
+    if (ids.length === 0) {
+      // Full re-score (brief changed) — let the server read the full pool
+      await scoreBatch([]);
+    } else {
+      const batches: string[][] = [];
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        batches.push(ids.slice(i, i + BATCH_SIZE));
       }
-    } catch { /* leave unscored — cards render without a signal */ }
-    finally { setRelevanceLoading(false); }
+      await Promise.allSettled(batches.map(scoreBatch));
+    }
+
+    setRelevanceLoading(false);
   }, []);
 
   // E5: Single fetch to /api/pulse-feed. Server returns the latest master

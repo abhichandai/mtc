@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * MTC Smoke Test Suite
- * Runs against staging or prod depending on which branch triggered the workflow.
- * Tests that every API route is reachable, returns valid JSON, and responds with
- * the expected status code. Does NOT test AI output quality — only structure + availability.
+ * MTC Smoke Test Suite v2
+ * Comprehensive coverage: all frontend API routes + all backend endpoints.
+ * Tests availability, status codes, and JSON shape where applicable.
+ * Does NOT test AI output quality — only structure + reachability.
  *
  * Usage: node scripts/smoke-test.mjs <BASE_URL>
  */
@@ -16,36 +16,51 @@ if (!BASE_URL) {
   process.exit(1);
 }
 
-console.log(`\n🔍 MTC Smoke Tests`);
+console.log(`\n🔍 MTC Smoke Tests v2`);
 console.log(`   Frontend: ${BASE_URL}`);
 console.log(`   Backend:  ${BACKEND_URL}\n`);
 
 // ─── Test definitions ────────────────────────────────────────────────────────
 
 const tests = [
-  // Frontend API routes
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FRONTEND — Auth-protected routes (Clerk middleware returns 401)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    // Clerk middleware intercepts unauthenticated requests and returns HTML 401
-    // We just verify the status code — JSON shape is tested on routes we control directly
-    name: 'GET /api/profile — returns 401 without auth',
+    name: 'GET /api/profile — 401 without auth',
     url: `${BASE_URL}/api/profile`,
     method: 'GET',
     expectedStatus: 401,
   },
   {
-    name: 'GET /api/saved-ideas — returns 401 without auth',
+    name: 'GET /api/saved-ideas — 401 without auth',
     url: `${BASE_URL}/api/saved-ideas`,
     method: 'GET',
     expectedStatus: 401,
   },
   {
-    name: 'GET /api/relevance-feedback — returns 401 without auth',
+    name: 'GET /api/relevance-feedback — 401 without auth',
     url: `${BASE_URL}/api/relevance-feedback`,
     method: 'GET',
     expectedStatus: 401,
   },
   {
-    // Returns 401 if Clerk middleware intercepts, 400/405 if route handles it directly
+    name: 'GET /api/pulse-feed — 401 without auth',
+    url: `${BASE_URL}/api/pulse-feed`,
+    method: 'GET',
+    expectedStatus: 401,
+  },
+  {
+    name: 'GET /api/pulse-unlocks — 401 without auth',
+    url: `${BASE_URL}/api/pulse-unlocks`,
+    method: 'GET',
+    expectedStatus: 401,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FRONTEND — Routes that behave differently across envs (accept any 4xx)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
     name: 'POST /api/analyze-niche — reachable (4xx without auth)',
     url: `${BASE_URL}/api/analyze-niche`,
     method: 'POST',
@@ -65,15 +80,139 @@ const tests = [
     method: 'GET',
     expectedStatusRange: [400, 499],
   },
-
-  // Backend routes
   {
-    name: 'GET /health — backend is alive',
+    name: 'POST /api/pulse-relevance — reachable (2xx/4xx)',
+    url: `${BASE_URL}/api/pulse-relevance`,
+    method: 'POST',
+    body: { trends: [], brief: '' },
+    expectedStatusRange: [200, 499],
+    requiresJson: true,
+  },
+  {
+    name: 'POST /api/pulse-bridge — reachable (4xx without auth)',
+    url: `${BASE_URL}/api/pulse-bridge`,
+    method: 'POST',
+    body: {},
+    expectedStatusRange: [400, 499],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FRONTEND — Proxy routes (no Clerk auth, hit the backend directly)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    name: 'GET /api/pulse-trends — proxies to backend',
+    url: `${BASE_URL}/api/pulse-trends?limit=1`,
+    method: 'GET',
+    expectedStatusRange: [200, 299],
+    requiresJson: true,
+  },
+  {
+    name: 'GET /api/pulse-reddit — proxies to backend',
+    url: `${BASE_URL}/api/pulse-reddit?limit=1`,
+    method: 'GET',
+    expectedStatusRange: [200, 299],
+    requiresJson: true,
+  },
+  {
+    name: 'GET /api/pulse-unlock — requires query param',
+    url: `${BASE_URL}/api/pulse-unlock`,
+    method: 'GET',
+    expectedStatus: 400,
+    requiresJson: true,
+    requiredKeys: ['success'],
+  },
+  {
+    name: 'GET /api/reddit-comments — requires url param',
+    url: `${BASE_URL}/api/reddit-comments`,
+    method: 'GET',
+    expectedStatus: 400,
+    requiresJson: true,
+    requiredKeys: ['error'],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FRONTEND — Cron / system routes
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    name: 'GET /api/keepalive — Supabase ping',
+    url: `${BASE_URL}/api/keepalive`,
+    method: 'GET',
+    expectedStatus: 200,
+    requiresJson: true,
+    requiredKeys: ['ok'],
+  },
+  {
+    // pulse-master-refresh requires CRON_SECRET — without it, expect 401
+    name: 'GET /api/pulse-master-refresh — 401 without cron secret',
+    url: `${BASE_URL}/api/pulse-master-refresh`,
+    method: 'GET',
+    expectedStatusRange: [401, 500],
+  },
+  {
+    // Clerk webhook requires svix headers — without them, 400
+    name: 'POST /api/webhooks/clerk — 400 without svix headers',
+    url: `${BASE_URL}/api/webhooks/clerk`,
+    method: 'POST',
+    body: {},
+    expectedStatusRange: [400, 500],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BACKEND — Direct endpoint tests
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    name: 'GET /health — backend alive',
     url: `${BACKEND_URL}/health`,
     method: 'GET',
     expectedStatus: 200,
     requiresJson: true,
     requiredKeys: ['status'],
+  },
+  {
+    name: 'GET / — backend root info',
+    url: `${BACKEND_URL}/`,
+    method: 'GET',
+    expectedStatus: 200,
+    requiresJson: true,
+    requiredKeys: ['service', 'endpoints'],
+  },
+  {
+    name: 'GET /trends/google — Google Trends data',
+    url: `${BACKEND_URL}/trends/google`,
+    method: 'GET',
+    expectedStatus: 200,
+    requiresJson: true,
+  },
+  {
+    name: 'GET /pulse/trends/raw — Pulse Google source',
+    url: `${BACKEND_URL}/pulse/trends/raw?limit=3`,
+    method: 'GET',
+    expectedStatus: 200,
+    requiresJson: true,
+    requiredKeys: ['success', 'trends'],
+  },
+  {
+    name: 'GET /pulse/trends/reddit — Pulse Reddit source',
+    url: `${BACKEND_URL}/pulse/trends/reddit?limit=3`,
+    method: 'GET',
+    expectedStatus: 200,
+    requiresJson: true,
+    requiredKeys: ['success', 'trends'],
+  },
+  {
+    name: 'GET /pulse/enrich — requires query param',
+    url: `${BACKEND_URL}/pulse/enrich`,
+    method: 'GET',
+    expectedStatus: 400,
+    requiresJson: true,
+    requiredKeys: ['success'],
+  },
+  {
+    name: 'GET /trends/reddit — 400 without subreddits param',
+    url: `${BACKEND_URL}/trends/reddit`,
+    method: 'GET',
+    expectedStatus: 400,
+    requiresJson: true,
   },
 ];
 
@@ -97,7 +236,10 @@ async function runTest(test) {
   let json;
 
   try {
-    const res = await fetch(test.url, options);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const res = await fetch(test.url, { ...options, signal: controller.signal });
+    clearTimeout(timeout);
     status = res.status;
 
     if (test.requiresJson) {
@@ -105,10 +247,11 @@ async function runTest(test) {
       try {
         json = JSON.parse(text);
       } catch {
-        throw new Error(`Response is not valid JSON. Body: ${text.slice(0, 200)}`);
+        throw new Error(`Response is not valid JSON. Status: ${status}. Body: ${text.slice(0, 200)}`);
       }
     }
   } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Request timed out after 30s');
     if (err.message.includes('not valid JSON')) throw err;
     throw new Error(`Network error: ${err.message}`);
   }
@@ -124,33 +267,49 @@ async function runTest(test) {
   }
 
   // Check required keys in response body
-  if (test.requiredKeys) {
+  if (test.requiredKeys && json) {
     for (const key of test.requiredKeys) {
       if (!(key in json)) {
-        throw new Error(`Response JSON missing required key: "${key}"`);
+        throw new Error(`Response JSON missing required key: "${key}". Got keys: ${Object.keys(json).join(', ')}`);
       }
     }
   }
 }
 
-for (const test of tests) {
-  process.stdout.write(`  ${test.name} ... `);
-  try {
-    await runTest(test);
-    console.log('✅ PASS');
-    passed++;
-  } catch (err) {
-    console.log(`❌ FAIL — ${err.message}`);
-    failed++;
-    failures.push({ name: test.name, error: err.message });
+// ─── Run all tests with section headers ──────────────────────────────────────
+
+const sections = [
+  { label: 'Frontend — Auth-protected', start: 0, end: 5 },
+  { label: 'Frontend — Env-dependent', start: 5, end: 10 },
+  { label: 'Frontend — Proxy routes', start: 10, end: 14 },
+  { label: 'Frontend — System routes', start: 14, end: 17 },
+  { label: 'Backend — Direct endpoints', start: 17, end: tests.length },
+];
+
+let testIdx = 0;
+for (const section of sections) {
+  console.log(`\n  ┌─ ${section.label}`);
+  for (let i = section.start; i < section.end; i++) {
+    const test = tests[i];
+    process.stdout.write(`  │ ${test.name} ... `);
+    try {
+      await runTest(test);
+      console.log('✅');
+      passed++;
+    } catch (err) {
+      console.log(`❌ ${err.message}`);
+      failed++;
+      failures.push({ name: test.name, error: err.message });
+    }
   }
+  console.log('  └─');
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
-console.log(`\n─────────────────────────────────────────`);
-console.log(`  Results: ${passed} passed, ${failed} failed`);
-console.log(`─────────────────────────────────────────\n`);
+console.log(`\n═══════════════════════════════════════════`);
+console.log(`  Results: ${passed} passed, ${failed} failed (${tests.length} total)`);
+console.log(`═══════════════════════════════════════════\n`);
 
 if (failures.length > 0) {
   console.error('Failed tests:');
