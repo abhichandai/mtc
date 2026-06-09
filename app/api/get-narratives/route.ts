@@ -115,41 +115,41 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const postUrl = searchParams.get('url') || '';
     const postTitle = searchParams.get('title') || '';
+    const wantStream = searchParams.get('stream') === '1';
 
     if (!postUrl) {
       return NextResponse.json({ error: 'url parameter required' }, { status: 400 });
     }
 
-    // Fetch creator profile for personalised content ideas
-    let creatorPlatforms: string[] = [];
-    let creatorStyles: string[] = [];
-    let audienceBrief = '';
-    let creatorFormat = '';
-    try {
-      const { userId } = await auth();
-      if (userId) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('platforms, content_styles, audience_brief, content_format')
-          .eq('user_id', userId)
-          .single();
-        if (profile) {
-          creatorPlatforms = profile.platforms || [];
-          creatorStyles = profile.content_styles || [];
-          audienceBrief = profile.audience_brief || '';
-          creatorFormat = profile.content_format || '';
+    // Fire profile fetch + comment fetch in parallel — saves 1-3s vs sequential
+    const profilePromise = (async () => {
+      try {
+        const { userId } = await auth();
+        if (userId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('platforms, content_styles, audience_brief, content_format')
+            .eq('user_id', userId)
+            .single();
+          return profile;
         }
-      }
-    } catch { /* profile fetch is best-effort — degrade gracefully */ }
+      } catch { /* profile fetch is best-effort — degrade gracefully */ }
+      return null;
+    })();
 
-    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief, creatorFormat);
-
-    // Fetch full comment tree from backend (now returns recursively flattened tree)
-    const commentsRes = await fetch(
+    const commentsPromise = fetch(
       `${BACKEND_URL}/trends/reddit/comments?url=${encodeURIComponent(postUrl)}`,
       { signal: AbortSignal.timeout(30000) }
-    );
-    const commentsData = await commentsRes.json();
+    ).then(r => r.json());
+
+    const [profile, commentsData] = await Promise.all([profilePromise, commentsPromise]);
+
+    const creatorPlatforms: string[] = profile?.platforms || [];
+    const creatorStyles: string[] = profile?.content_styles || [];
+    const audienceBrief: string = profile?.audience_brief || '';
+    const creatorFormat: string = profile?.content_format || '';
+
+    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief, creatorFormat);
 
     if (!commentsData.success || !commentsData.comments?.length) {
       return NextResponse.json({ error: 'No comments found for this post' }, { status: 404 });
@@ -158,11 +158,12 @@ export async function GET(req: NextRequest) {
     const postBody = commentsData.post_body || '';
     const now = Math.floor(Date.now() / 1000);
 
-    // Cap at top 80 comments by score — signal is concentrated in high-voted comments.
-    // Sending 400+ comments blows the 60s Hobby plan timeout; top 80 captures all meaningful signal.
+    // Cap at top 50 comments by score — signal is concentrated in the highest-voted
+    // comments. 50 captures all meaningful debate while keeping the prompt lean enough
+    // for faster Sonnet generation (~5-10s faster than 80).
     const topComments: Comment[] = [...commentsData.comments]
       .sort((a: Comment, b: Comment) => b.score - a.score)
-      .slice(0, 80);
+      .slice(0, 50);
 
     const allComments = topComments
       .map((c: Comment, i: number) => {
@@ -197,23 +198,75 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
   "missing_narratives": "null or brief explanation if contested/contrarian genuinely not present"
 }`;
 
-    const claudeResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
-      system: SYSTEM_PROMPT + '\n\n' + creatorContext,
-      messages: [{ role: 'user', content: userMessage }],
+    // ── NON-STREAMING PATH (backwards compatible) ──
+    if (!wantStream) {
+      const claudeResponse = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: SYSTEM_PROMPT + '\n\n' + creatorContext,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
+      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+      return NextResponse.json({
+        success: true,
+        narratives: parsed.narratives || [],
+        thread_type: parsed.thread_type || 'mixed',
+        missing_narratives: parsed.missing_narratives || null,
+        comment_count: commentsData.count,
+        post_body: postBody,
+      });
+    }
+
+    // ── STREAMING PATH ──
+    // Protocol: newline-delimited JSON events
+    //   {"type":"meta","comment_count":N,"post_body":"..."}\n
+    //   {"type":"delta","text":"..."}\n  (repeated)
+    //   {"type":"done"}\n
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send metadata first so frontend can render header immediately
+          controller.enqueue(encoder.encode(
+            JSON.stringify({ type: 'meta', comment_count: commentsData.count, post_body: postBody }) + '\n'
+          ));
+
+          const stream = client.messages.stream({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 4000,
+            system: SYSTEM_PROMPT + '\n\n' + creatorContext,
+            messages: [{ role: 'user', content: userMessage }],
+          });
+
+          for await (const event of stream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              controller.enqueue(encoder.encode(
+                JSON.stringify({ type: 'delta', text: event.delta.text }) + '\n'
+              ));
+            }
+          }
+
+          controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+          controller.close();
+        } catch (err) {
+          controller.enqueue(encoder.encode(
+            JSON.stringify({ type: 'error', message: err instanceof Error ? err.message : 'Stream failed' }) + '\n'
+          ));
+          controller.close();
+        }
+      },
     });
 
-    const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
-    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-
-    return NextResponse.json({
-      success: true,
-      narratives: parsed.narratives || [],
-      thread_type: parsed.thread_type || 'mixed',
-      missing_narratives: parsed.missing_narratives || null,
-      comment_count: commentsData.count,
-      post_body: postBody,
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+      },
     });
 
   } catch (error) {
