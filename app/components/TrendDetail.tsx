@@ -515,7 +515,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                 </div>
                 {/* Elapsed timer */}
                 <div style={{ textAlign: 'center', marginTop: 14 }}>
-                  <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-ui)' }}>
+                  <span style={{ fontSize: 20, fontWeight: 400, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-ui)' }}>
                     {elapsedSeconds}s
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>elapsed</span>
