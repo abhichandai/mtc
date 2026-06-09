@@ -128,6 +128,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   const [commentCount, setCommentCount] = useState(cachedNarratives?.comment_count || 0);
   const [postBody, setPostBody] = useState(cachedNarratives?.post_body || trend.preview || '');
   const [generatedAt, setGeneratedAt] = useState<number | null>(cachedNarratives?.generated_at || null);
+  // Track stream phase for better loading UX
+  const [streamPhase, setStreamPhase] = useState<'fetching' | 'generating' | null>(null);
   // Track which URL the current state belongs to — only reset when card changes
   const [stateUrl, setStateUrl] = useState<string>(trend.permalink || trend.url || '');
 
@@ -202,6 +204,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     setNarrativesState('loading');
     setNarrativeError('');
     setNarratives([]);
+    setStreamPhase('fetching');
     try {
       const res = await fetch(
         `/api/get-narratives?url=${encodeURIComponent(commentUrl)}&title=${encodeURIComponent(trend.title || '')}&stream=1`,
@@ -241,6 +244,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             localPostBody = event.post_body || '';
             setCommentCount(localCommentCount);
             if (localPostBody) setPostBody(localPostBody);
+            setStreamPhase('generating');
           } else if (event.type === 'delta') {
             accumulated += event.text;
             // Try to extract completed narratives progressively
@@ -265,6 +269,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       setCommentCount(localCommentCount);
       setGeneratedAt(now);
       setNarrativesState('done');
+      setStreamPhase(null);
       if (onNarrativesCached) {
         onNarrativesCached(commentUrl, {
           narratives: finalNarratives,
@@ -276,6 +281,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     } catch (e) {
       setNarrativeError(e instanceof Error ? e.message : 'Something went wrong');
       setNarrativesState('error');
+      setStreamPhase(null);
     }
   };
 
@@ -429,7 +435,9 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
           {narrativesState === 'loading' && narratives.length === 0 && (
             <div style={{ padding: '28px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
               <div className="live-dot" style={{ width: 10, height: 10 }} />
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>Reading the community conversation...</p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>
+                {streamPhase === 'generating' ? 'Generating narrative 1 of 3...' : 'Reading the community conversation...'}
+              </p>
             </div>
           )}
 
