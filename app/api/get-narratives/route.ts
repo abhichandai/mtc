@@ -120,36 +120,35 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'url parameter required' }, { status: 400 });
     }
 
-    // Fetch creator profile for personalised content ideas
-    let creatorPlatforms: string[] = [];
-    let creatorStyles: string[] = [];
-    let audienceBrief = '';
-    let creatorFormat = '';
-    try {
-      const { userId } = await auth();
-      if (userId) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('platforms, content_styles, audience_brief, content_format')
-          .eq('user_id', userId)
-          .single();
-        if (profile) {
-          creatorPlatforms = profile.platforms || [];
-          creatorStyles = profile.content_styles || [];
-          audienceBrief = profile.audience_brief || '';
-          creatorFormat = profile.content_format || '';
+    // Fire profile fetch + comment fetch in parallel — saves 1-3s vs sequential
+    const profilePromise = (async () => {
+      try {
+        const { userId } = await auth();
+        if (userId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('platforms, content_styles, audience_brief, content_format')
+            .eq('user_id', userId)
+            .single();
+          return profile;
         }
-      }
-    } catch { /* profile fetch is best-effort — degrade gracefully */ }
+      } catch { /* profile fetch is best-effort — degrade gracefully */ }
+      return null;
+    })();
 
-    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief, creatorFormat);
-
-    // Fetch full comment tree from backend (now returns recursively flattened tree)
-    const commentsRes = await fetch(
+    const commentsPromise = fetch(
       `${BACKEND_URL}/trends/reddit/comments?url=${encodeURIComponent(postUrl)}`,
       { signal: AbortSignal.timeout(30000) }
-    );
-    const commentsData = await commentsRes.json();
+    ).then(r => r.json());
+
+    const [profile, commentsData] = await Promise.all([profilePromise, commentsPromise]);
+
+    const creatorPlatforms: string[] = profile?.platforms || [];
+    const creatorStyles: string[] = profile?.content_styles || [];
+    const audienceBrief: string = profile?.audience_brief || '';
+    const creatorFormat: string = profile?.content_format || '';
+
+    const creatorContext = buildCreatorContext(creatorPlatforms, creatorStyles, audienceBrief, creatorFormat);
 
     if (!commentsData.success || !commentsData.comments?.length) {
       return NextResponse.json({ error: 'No comments found for this post' }, { status: 404 });
@@ -158,11 +157,12 @@ export async function GET(req: NextRequest) {
     const postBody = commentsData.post_body || '';
     const now = Math.floor(Date.now() / 1000);
 
-    // Cap at top 80 comments by score — signal is concentrated in high-voted comments.
-    // Sending 400+ comments blows the 60s Hobby plan timeout; top 80 captures all meaningful signal.
+    // Cap at top 50 comments by score — signal is concentrated in the highest-voted
+    // comments. 50 captures all meaningful debate while keeping the prompt lean enough
+    // for faster Sonnet generation (~5-10s faster than 80).
     const topComments: Comment[] = [...commentsData.comments]
       .sort((a: Comment, b: Comment) => b.score - a.score)
-      .slice(0, 80);
+      .slice(0, 50);
 
     const allComments = topComments
       .map((c: Comment, i: number) => {

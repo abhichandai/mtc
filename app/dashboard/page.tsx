@@ -487,7 +487,7 @@ function DashboardContent() {
         throw new Error('No posts returned from Reddit');
       }
 
-      const cardLimit = TEST_MODE ? TEST_CARD_LIMIT : 12;
+      const cardLimit = TEST_MODE ? TEST_CARD_LIMIT : 15;
       const topPosts = redditData.posts.slice(0, cardLimit);
       const trends: Trend[] = topPosts.map((post: Trend) => ({ ...post, tweets: [] }));
 
@@ -629,8 +629,11 @@ function DashboardContent() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                   <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text)' }}>
-                    {result.trends.length} topics trending now
+                    What your audience is talking about
                   </h1>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 10px' }}>
+                    {result.trends.length}
+                  </span>
                 </div>
                 {result.niche.description && (
                   <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>{result.niche.description}</p>
