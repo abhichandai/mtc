@@ -200,6 +200,10 @@ body {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
 }
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(124,92,252,0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(124,92,252,0.08); }
+}
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(18px); }
   to   { opacity: 1; transform: translateY(0); }

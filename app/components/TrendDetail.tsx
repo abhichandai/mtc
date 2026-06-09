@@ -130,6 +130,15 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   const [generatedAt, setGeneratedAt] = useState<number | null>(cachedNarratives?.generated_at || null);
   // Track stream phase for better loading UX
   const [streamPhase, setStreamPhase] = useState<'fetching' | 'generating' | null>(null);
+  // Elapsed timer for progress bar
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Tick the elapsed timer every second during loading
+  useEffect(() => {
+    if (narrativesState !== 'loading') { setElapsedSeconds(0); return; }
+    const t = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [narrativesState]);
   // Track which URL the current state belongs to — only reset when card changes
   const [stateUrl, setStateUrl] = useState<string>(trend.permalink || trend.url || '');
 
@@ -441,15 +450,79 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             </button>
           )}
 
-          {/* Loading — show spinner, but also render any narratives that have streamed in */}
-          {narrativesState === 'loading' && narratives.length === 0 && (
-            <div style={{ padding: '28px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <div className="live-dot" style={{ width: 10, height: 10 }} />
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>
-                {streamPhase === 'generating' ? 'Generating narrative 1 of 3...' : 'Reading the community conversation...'}
-              </p>
-            </div>
-          )}
+          {/* Step progress bar — visible throughout the entire loading/streaming phase */}
+          {narrativesState === 'loading' && (() => {
+            const steps = [
+              { label: 'Reading', key: 'read' },
+              { label: 'Narrative 1', key: 'n1' },
+              { label: 'Narrative 2', key: 'n2' },
+              { label: 'Narrative 3', key: 'n3' },
+            ];
+            // Determine current step index
+            let activeStep = 0;
+            if (streamPhase === 'generating') activeStep = 1 + narratives.length;
+            if (activeStep > 3) activeStep = 3; // cap at last step
+
+            return (
+              <div style={{ padding: '20px 12px 12px', marginBottom: 8 }}>
+                {/* Steps row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative' }}>
+                  {steps.map((step, i) => {
+                    const isDone = i < activeStep || (i === 3 && narratives.length >= 3);
+                    const isActive = i === activeStep && !isDone;
+                    return (
+                      <div key={step.key} style={{ display: 'flex', alignItems: 'center' }}>
+                        {/* Connector line (before each step except first) */}
+                        {i > 0 && (
+                          <div style={{
+                            width: 40, height: 2,
+                            background: isDone || isActive ? 'var(--accent)' : 'var(--border)',
+                            transition: 'background 0.3s',
+                          }} />
+                        )}
+                        {/* Step circle + label */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 50 }}>
+                          <div style={{
+                            width: 24, height: 24, borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: isDone ? '#16a34a' : isActive ? 'var(--accent)' : 'var(--surface-2)',
+                            border: `2px solid ${isDone ? '#16a34a' : isActive ? 'var(--accent)' : 'var(--border)'}`,
+                            transition: 'all 0.3s',
+                            ...(isActive ? { boxShadow: '0 0 0 4px rgba(124,92,252,0.2)', animation: 'pulse-ring 1.5s ease-in-out infinite' } : {}),
+                          }}>
+                            {isDone ? (
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            ) : isActive ? (
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />
+                            ) : (
+                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--border)' }} />
+                            )}
+                          </div>
+                          <span style={{
+                            fontSize: 10, fontWeight: isActive || isDone ? 700 : 500,
+                            color: isDone ? '#16a34a' : isActive ? 'var(--accent)' : 'var(--text-dim)',
+                            letterSpacing: '0.02em', whiteSpace: 'nowrap',
+                            transition: 'color 0.3s',
+                          }}>
+                            {step.label}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Elapsed timer */}
+                <div style={{ textAlign: 'center', marginTop: 14 }}>
+                  <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-ui)' }}>
+                    {elapsedSeconds}s
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>elapsed</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Error */}
           {narrativesState === 'error' && (
@@ -556,18 +629,6 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                     </div>
                   );
                 })}
-                {/* Streaming indicator — more narratives coming */}
-                {narrativesState === 'loading' && (
-                  <div style={{
-                    padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                    border: '1px dashed var(--border)', borderRadius: 10, background: 'var(--surface)',
-                  }}>
-                    <div className="live-dot" style={{ width: 8, height: 8 }} />
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {narratives.length < 3 ? `Generating narrative ${narratives.length + 1} of 3...` : 'Finishing up...'}
-                    </span>
-                  </div>
-                )}
               </div>
             );
           })()}
