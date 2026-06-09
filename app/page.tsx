@@ -21,7 +21,7 @@ export default function LandingPage() {
   const isValid = brief.trim().length >= 3;
 
   useEffect(() => {
-    if (isSignedIn) router.push('/dashboard');
+    if (isSignedIn) router.push('/pulse');
   }, [isSignedIn, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,13 +58,13 @@ export default function LandingPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isSignedIn ? (
-            <button onClick={() => router.push('/dashboard')} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-ui)', cursor: 'pointer' }}>
+            <button onClick={() => router.push('/pulse')} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-ui)', cursor: 'pointer' }}>
               Go to dashboard →
             </button>
           ) : (
             <>
               <button
-                onClick={() => router.push('/sign-in?redirect_url=/dashboard')}
+                onClick={() => router.push('/sign-in?redirect_url=/pulse')}
                 style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-ui)', transition: 'all 0.15s' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
@@ -116,7 +116,7 @@ export default function LandingPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
           <button
-            onClick={() => router.push('/sign-in?redirect_url=/dashboard')}
+            onClick={() => router.push('/sign-in?redirect_url=/pulse')}
             style={{ background: 'var(--surface)', color: 'var(--text)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '13px 28px', fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-ui)', cursor: 'pointer', transition: 'all 0.15s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}

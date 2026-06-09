@@ -84,7 +84,7 @@ function OnboardingContent() {
         const data = await res.json();
         if (data.profile?.onboarding_completed) {
           const k = searchParams.get('k');
-          const dest = k ? `/dashboard?${new URLSearchParams({ k })}` : '/dashboard';
+          const dest = k ? `/pulse?${new URLSearchParams({ k })}` : '/pulse';
           router.replace(dest);
         }
       } catch {
@@ -133,7 +133,7 @@ function OnboardingContent() {
         }),
       });
       const k = brief.trim();
-      router.push(k ? `/dashboard?${new URLSearchParams({ k })}` : '/dashboard');
+      router.push(k ? `/pulse?${new URLSearchParams({ k })}` : '/pulse');
     } catch {
       setSaving(false);
     }

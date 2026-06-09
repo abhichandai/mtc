@@ -410,10 +410,9 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>🧠</span>
               <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Top 3 Narratives</h3>
-              {narrativesState === 'done' && commentCount > 0 && (
+              {narrativesState === 'done' && generatedAt && (
                 <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                  from {commentCount} comments
-                  {generatedAt ? ` · generated ${timeAgoMs(generatedAt)}` : ''}
+                  generated {timeAgoMs(generatedAt)}
                 </span>
               )}
             </div>
