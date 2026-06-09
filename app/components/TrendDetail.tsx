@@ -169,28 +169,107 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
   }, [trend, onClose, cachedNarratives]);
 
   const commentUrl: string = trend.permalink || trend.url || '';
+
+  // Progressive JSON parser: tries to extract completed narrative objects
+  // from a partial JSON stream by force-closing the structure
+  const extractNarratives = (partial: string): Narrative[] => {
+    const cleaned = partial.replace(/```json|```/g, '').trim();
+    // Try to find the narratives array start
+    const arrStart = cleaned.indexOf('"narratives"');
+    if (arrStart === -1) return [];
+    const bracketStart = cleaned.indexOf('[', arrStart);
+    if (bracketStart === -1) return [];
+
+    // Extract from the opening bracket onwards
+    const arrContent = cleaned.slice(bracketStart);
+
+    // Try progressively closing the array + outer object
+    // Work backwards from the end to find the last complete object
+    for (let i = arrContent.length; i > 0; i--) {
+      if (arrContent[i - 1] === '}') {
+        const attempt = arrContent.slice(0, i) + ']}';
+        try {
+          const parsed = JSON.parse(attempt);
+          if (Array.isArray(parsed)) return parsed;
+        } catch { /* not valid yet, keep trying */ }
+      }
+    }
+    return [];
+  };
+
   const fetchNarratives = async () => {
     if (!commentUrl || narrativesState === 'loading') return;
     setNarrativesState('loading');
     setNarrativeError('');
+    setNarratives([]);
     try {
       const res = await fetch(
-        `/api/get-narratives?url=${encodeURIComponent(commentUrl)}&title=${encodeURIComponent(trend.title || '')}`,
-        { signal: AbortSignal.timeout(55000) }
+        `/api/get-narratives?url=${encodeURIComponent(commentUrl)}&title=${encodeURIComponent(trend.title || '')}&stream=1`,
+        { signal: AbortSignal.timeout(120000) }
       );
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Failed to generate narratives');
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to generate narratives');
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No stream available');
+
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let localCommentCount = 0;
+      let localPostBody = '';
+      let lastNarrativeCount = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(l => l.trim());
+
+        for (const line of lines) {
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue; // Partial chunk — not valid JSON yet, skip
+          }
+          if (event.type === 'meta') {
+            localCommentCount = event.comment_count || 0;
+            localPostBody = event.post_body || '';
+            setCommentCount(localCommentCount);
+            if (localPostBody) setPostBody(localPostBody);
+          } else if (event.type === 'delta') {
+            accumulated += event.text;
+            // Try to extract completed narratives progressively
+            const found = extractNarratives(accumulated);
+            if (found.length > lastNarrativeCount) {
+              lastNarrativeCount = found.length;
+              setNarratives(found);
+            }
+          } else if (event.type === 'error') {
+            throw new Error(event.message || 'Stream failed');
+          }
+        }
+      }
+
+      // Final parse of the complete response
+      const cleanedFinal = accumulated.replace(/```json|```/g, '').trim();
+      const finalParsed = JSON.parse(cleanedFinal);
+      const finalNarratives = finalParsed.narratives || [];
+
       const now = Date.now();
-      setNarratives(data.narratives || []);
-      setCommentCount(data.comment_count || 0);
-      if (data.post_body) setPostBody(data.post_body);
+      setNarratives(finalNarratives);
+      setCommentCount(localCommentCount);
       setGeneratedAt(now);
       setNarrativesState('done');
       if (onNarrativesCached) {
         onNarrativesCached(commentUrl, {
-          narratives: data.narratives || [],
-          post_body: data.post_body || '',
-          comment_count: data.comment_count || 0,
+          narratives: finalNarratives,
+          post_body: localPostBody,
+          comment_count: localCommentCount,
           generated_at: now,
         });
       }
@@ -346,8 +425,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             </button>
           )}
 
-          {/* Loading */}
-          {narrativesState === 'loading' && (
+          {/* Loading — show spinner, but also render any narratives that have streamed in */}
+          {narrativesState === 'loading' && narratives.length === 0 && (
             <div style={{ padding: '28px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
               <div className="live-dot" style={{ width: 10, height: 10 }} />
               <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>Reading the community conversation...</p>
@@ -364,8 +443,8 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             </div>
           )}
 
-          {/* Results */}
-          {narrativesState === 'done' && narratives.length > 0 && (() => {
+          {/* Results — render during both streaming (loading with partial results) and done */}
+          {(narrativesState === 'done' || (narrativesState === 'loading' && narratives.length > 0)) && narratives.length > 0 && (() => {
             const typeConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
               consensus:   { label: 'CONSENSUS',   color: '#16a34a', bg: 'rgba(22,163,74,0.08)',   border: '#16a34a' },
               contested:   { label: 'CONTESTED',   color: '#dc2626', bg: 'rgba(220,38,38,0.08)',   border: '#dc2626' },
@@ -459,6 +538,18 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
                     </div>
                   );
                 })}
+                {/* Streaming indicator — more narratives coming */}
+                {narrativesState === 'loading' && (
+                  <div style={{
+                    padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    border: '1px dashed var(--border)', borderRadius: 10, background: 'var(--surface)',
+                  }}>
+                    <div className="live-dot" style={{ width: 8, height: 8 }} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {narratives.length < 3 ? `Generating narrative ${narratives.length + 1} of 3...` : 'Finishing up...'}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })()}

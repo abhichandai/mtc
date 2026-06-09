@@ -115,6 +115,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const postUrl = searchParams.get('url') || '';
     const postTitle = searchParams.get('title') || '';
+    const wantStream = searchParams.get('stream') === '1';
 
     if (!postUrl) {
       return NextResponse.json({ error: 'url parameter required' }, { status: 400 });
@@ -197,23 +198,74 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
   "missing_narratives": "null or brief explanation if contested/contrarian genuinely not present"
 }`;
 
-    const claudeResponse = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
-      system: SYSTEM_PROMPT + '\n\n' + creatorContext,
-      messages: [{ role: 'user', content: userMessage }],
+    // ── NON-STREAMING PATH (backwards compatible) ──
+    if (!wantStream) {
+      const claudeResponse = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: SYSTEM_PROMPT + '\n\n' + creatorContext,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
+      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+      return NextResponse.json({
+        success: true,
+        narratives: parsed.narratives || [],
+        thread_type: parsed.thread_type || 'mixed',
+        missing_narratives: parsed.missing_narratives || null,
+        comment_count: commentsData.count,
+        post_body: postBody,
+      });
+    }
+
+    // ── STREAMING PATH ──
+    // Protocol: newline-delimited JSON events
+    //   {"type":"meta","comment_count":N,"post_body":"..."}\n
+    //   {"type":"delta","text":"..."}\n  (repeated)
+    //   {"type":"done"}\n
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send metadata first so frontend can render header immediately
+          controller.enqueue(encoder.encode(
+            JSON.stringify({ type: 'meta', comment_count: commentsData.count, post_body: postBody }) + '\n'
+          ));
+
+          const stream = client.messages.stream({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 4000,
+            system: SYSTEM_PROMPT + '\n\n' + creatorContext,
+            messages: [{ role: 'user', content: userMessage }],
+          });
+
+          for await (const event of stream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              controller.enqueue(encoder.encode(
+                JSON.stringify({ type: 'delta', text: event.delta.text }) + '\n'
+              ));
+            }
+          }
+
+          controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+          controller.close();
+        } catch (err) {
+          controller.enqueue(encoder.encode(
+            JSON.stringify({ type: 'error', message: err instanceof Error ? err.message : 'Stream failed' }) + '\n'
+          ));
+          controller.close();
+        }
+      },
     });
 
-    const text = claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : '';
-    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-
-    return NextResponse.json({
-      success: true,
-      narratives: parsed.narratives || [],
-      thread_type: parsed.thread_type || 'mixed',
-      missing_narratives: parsed.missing_narratives || null,
-      comment_count: commentsData.count,
-      post_body: postBody,
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache',
+      },
     });
 
   } catch (error) {
