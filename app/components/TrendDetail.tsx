@@ -224,6 +224,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
       let localCommentCount = 0;
       let localPostBody = '';
       let lastNarrativeCount = 0;
+      let progressiveNarratives: Narrative[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -251,6 +252,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
             const found = extractNarratives(accumulated);
             if (found.length > lastNarrativeCount) {
               lastNarrativeCount = found.length;
+              progressiveNarratives = found;
               setNarratives(found);
             }
           } else if (event.type === 'error') {
@@ -259,10 +261,18 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
         }
       }
 
-      // Final parse of the complete response
-      const cleanedFinal = accumulated.replace(/```json|```/g, '').trim();
-      const finalParsed = JSON.parse(cleanedFinal);
-      const finalNarratives = finalParsed.narratives || [];
+      // Final parse of the complete response. If it fails (truncated output,
+      // minor formatting issue), fall back to whatever narratives were already
+      // extracted progressively — they're already in state and the user saw them.
+      let finalNarratives = progressiveNarratives; // fallback = what progressive parser found
+      try {
+        const cleanedFinal = accumulated.replace(/```json|```/g, '').trim();
+        const finalParsed = JSON.parse(cleanedFinal);
+        if (finalParsed.narratives?.length) finalNarratives = finalParsed.narratives;
+      } catch {
+        // Final parse failed — use progressively extracted narratives
+        console.warn('[get-narratives] Final JSON parse failed, using progressive results');
+      }
 
       const now = Date.now();
       setNarratives(finalNarratives);
