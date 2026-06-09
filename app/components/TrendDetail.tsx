@@ -187,7 +187,7 @@ export default function TrendDetail({ trend, onClose, cachedNarratives, onNarrat
     // Work backwards from the end to find the last complete object
     for (let i = arrContent.length; i > 0; i--) {
       if (arrContent[i - 1] === '}') {
-        const attempt = arrContent.slice(0, i) + ']}';
+        const attempt = arrContent.slice(0, i) + ']';
         try {
           const parsed = JSON.parse(attempt);
           if (Array.isArray(parsed)) return parsed;

@@ -265,6 +265,7 @@ Identify the 3 narratives in this thread. Return this exact JSON structure:
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
         'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
       },
     });
 
