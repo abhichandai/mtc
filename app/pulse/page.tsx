@@ -1451,10 +1451,14 @@ export default function PulsePage() {
                   <h1 style={{
                     fontFamily: 'var(--font-ui)', fontSize: 32, fontWeight: 800,
                     letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 8px',
+                    display: 'flex', alignItems: 'center', gap: 10,
                   }}>
-                    {visibleTrends.length} trends right now
+                    What&apos;s Hot Right Now
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 10px' }}>
+                      {visibleTrends.length}
+                    </span>
                     {visibleTrends.length < trends.length && (
-                      <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-dim)', marginLeft: 10 }}>
+                      <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-dim)' }}>
                         {trends.length - visibleTrends.length} hidden by filters
                       </span>
                     )}
